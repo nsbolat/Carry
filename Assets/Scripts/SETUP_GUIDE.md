@@ -130,3 +130,57 @@ Sinematik anlar için kamera bölgeleri oluşturabilirsiniz:
 | Karakter yere düşüyor | Ground Layer ayarını kontrol et |
 | Kamera takip etmiyor | Player'ın Tag'inin "Player" olduğunu kontrol et |
 | Rotation çalışmıyor | Ground raycast'ın zemine ulaştığını kontrol et (Scene view'da görüntülenir) |
+
+---
+
+## 5. Kutu Sürükleme (Box Dragging) Sistemi
+
+### 5.1 Layer Oluştur
+1. **Edit** > **Project Settings** > **Tags and Layers**
+2. Yeni layer ekle: "Box" veya "Draggable"
+
+### 5.2 Kutu Prefab Hazırla
+1. **Hierarchy** > **3D Object** > **Cube** oluştur
+2. "DraggableBox" olarak adlandır
+3. Şu component'leri ekle:
+   - **Rigidbody** (Is Kinematic: ✓)
+   - **DraggableBox** script
+4. Layer: "Box" olarak ayarla
+5. Prefab olarak kaydet
+
+### 5.3 DraggableBox Ayarları
+
+| Ayar | Önerilen Değer | Açıklama |
+|------|----------------|----------|
+| Attach Point Offset | (0, 0.5, 0) | Halatın bağlandığı nokta |
+| Follow Speed | 8 | Takip yumuşaklığı |
+| Rope Length | 1.5 | Kutular arası mesafe |
+| Stay Grounded | ✓ | Kutu yere yapışık kalır |
+| Ground Layer | "Ground" | Zemin layer'ı |
+| Interaction Range | 2 | Bağlanma mesafesi |
+
+### 5.4 Player'a BoxCarrier Ekle
+1. Player objesine **BoxCarrier** component ekle
+2. Player objesine **RopeVisualizer** component ekle (LineRenderer otomatik eklenir)
+3. Ayarlar:
+   - **Max Boxes**: 5 (veya 0 sınırsız için)
+   - **Box Layer**: "Box" layer'ını seç
+   - **Rope Visualizer**: RopeVisualizer component'ini sürükle
+
+### 5.5 PlayerInputHandler'a BoxCarrier Bağlantısı
+1. PlayerInputHandler'daki **Box Carrier** alanına BoxCarrier component'ini sürükle
+2. InputSystem_Actions'a "Interact" action ekle:
+   - **Action Type**: Button
+   - **Binding**: E (Keyboard) veya South Button (Gamepad)
+
+---
+
+## Hızlı Test - Kutu Sürükleme
+
+1. Sahneye 3-4 adet DraggableBox prefab'ı yerleştir
+2. Play moduna gir
+3. Kutuya yaklaş ve **E** tuşuna bas - kutu bağlanır
+4. Hareket et - kutu arkandan gelir
+5. Başka kutulara yaklaşıp **E** ile zincirleme bağla
+6. **E** tuşuna basarak son kutuyu çöz
+

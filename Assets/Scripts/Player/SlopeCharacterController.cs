@@ -17,6 +17,14 @@ namespace Sisifos.Player
         [SerializeField] private float deceleration = 4f;
         [SerializeField] private float turnSmoothTime = 0.1f;
 
+        [Header("Carry Weight")]
+        [Tooltip("Her kutu başına hız azalma yüzdesi (0.05 = %5)")]
+        [SerializeField] private float speedReductionPerBox = 0.05f;
+        [Tooltip("Minimum hız çarpanı (örn: 0.5 = en fazla %50 yavaşlama)")]
+        [SerializeField] private float minSpeedMultiplier = 0.5f;
+        [Tooltip("Gerginliğin hıza maksimum etkisi (0.3 = en fazla %30 ek yavaşlama)")]
+        [SerializeField] private float maxTensionEffect = 0.3f;
+
         [Header("Jump Settings")]
         [SerializeField] private float jumpForce = 8f;
         [SerializeField] private float gravity = -20f;
@@ -63,6 +71,11 @@ namespace Sisifos.Player
         // Input
         private Vector2 _inputMove;
         private bool _inputJump;
+        
+        // Carry weight
+        private int _carriedBoxCount = 0;
+        private float _speedMultiplier = 1f;
+        private float _ropeTension = 0f; // 0-1 arası halat gerginliği
 
         #region Properties
         public bool IsGrounded => _isGrounded;
@@ -72,6 +85,7 @@ namespace Sisifos.Player
         public float CurrentSlopeAngle => _currentSlopeAngle;
         public Vector3 Velocity => _velocity;
         public Vector3 GroundNormal => _groundNormal;
+        public float SpeedMultiplier => _speedMultiplier;
         #endregion
 
         private void Awake()
@@ -116,6 +130,25 @@ namespace Sisifos.Player
         public void SetRunning(bool running)
         {
             _isRunning = running;
+        }
+
+        /// <summary>
+        /// Taşınan kutu sayısını ayarlar ve hız çarpanını günceller
+        /// </summary>
+        public void SetCarriedWeight(int boxCount)
+        {
+            _carriedBoxCount = boxCount;
+            // Hız çarpanı hesapla: her kutu için belirli yüzde azalma
+            _speedMultiplier = Mathf.Max(minSpeedMultiplier, 1f - (boxCount * speedReductionPerBox));
+        }
+
+        /// <summary>
+        /// Halat gerginliğini ayarlar (0-1 arası). 
+        /// Yüksek gerginlik = kutular zorlanıyor = karakter yavaşlar
+        /// </summary>
+        public void SetRopeTension(float tension)
+        {
+            _ropeTension = Mathf.Clamp01(tension);
         }
         #endregion
 
@@ -251,9 +284,14 @@ namespace Sisifos.Player
             // Side-scroller için sadece X ekseninde hareket (sol-sağ)
             float horizontal = _inputMove.x;
             
-            // Hedef hız hesapla
+            // Hedef hız hesapla (ağırlık çarpanı + gerginlik ile)
+            float baseSpeed = _isRunning ? runSpeed : walkSpeed;
+            
+            // Gerginlik faktörü: 0 gerginlik = 1.0 çarpan, maksimum gerginlik = (1-maxTensionEffect) çarpan
+            float tensionMultiplier = 1f - (_ropeTension * maxTensionEffect);
+            
             _targetSpeed = Mathf.Abs(horizontal) > 0.1f 
-                ? (_isRunning ? runSpeed : walkSpeed) 
+                ? baseSpeed * _speedMultiplier * tensionMultiplier
                 : 0f;
 
             // Smooth hız geçişi
