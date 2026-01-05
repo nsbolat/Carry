@@ -11,11 +11,11 @@ namespace Sisifos.Player
     public class SlopeCharacterController : MonoBehaviour
     {
         [Header("Movement Settings")]
-        [SerializeField] private float walkSpeed = 4f;
-        [SerializeField] private float runSpeed = 8f;
-        [SerializeField] private float acceleration = 3f;
-        [SerializeField] private float deceleration = 4f;
-        [SerializeField] private float turnSmoothTime = 0.1f;
+        [SerializeField] private float walkSpeed = 5f;
+        [SerializeField] private float runSpeed = 10f;
+        [SerializeField] private float acceleration = 12f;
+        [SerializeField] private float deceleration = 15f;
+        [SerializeField] private float turnSmoothTime = 0.05f;
 
         [Header("Carry Weight")]
         [Tooltip("Her kutu başına hız azalma yüzdesi (0.05 = %5)")]
@@ -86,6 +86,8 @@ namespace Sisifos.Player
         public Vector3 Velocity => _velocity;
         public Vector3 GroundNormal => _groundNormal;
         public float SpeedMultiplier => _speedMultiplier;
+        public float WalkSpeed => walkSpeed;
+        public float RunSpeed => runSpeed;
         #endregion
 
         private void Awake()
@@ -383,7 +385,10 @@ namespace Sisifos.Player
         {
             if (animator == null) return;
 
-            animator.SetFloat(speedParameter, _currentSpeed / runSpeed);
+            // Animasyon hızı sadece karakterin gerçek hızına bağlı
+            // _currentSpeed zaten kutu taşırken yavaşlıyor (speedMultiplier etkisi)
+            float normalizedSpeed = _currentSpeed / runSpeed;
+            animator.SetFloat(speedParameter, normalizedSpeed);
             animator.SetBool(groundedParameter, _isGrounded);
         }
         #endregion

@@ -15,7 +15,6 @@ namespace Sisifos.Camera
         [SerializeField] private CinemachineCamera virtualCamera;
 
         [Header("Side-Scroller Settings")]
-        [SerializeField] private float cameraDistance = 15f;
         [SerializeField] private float cameraHeight = 3f;
         [SerializeField] private Vector3 cameraOffset = new Vector3(0f, 2f, 0f);
 
@@ -24,12 +23,19 @@ namespace Sisifos.Camera
         [SerializeField] private float lookAheadSmoothTime = 0.5f;
         [SerializeField] private float verticalLookAhead = 1.5f;
 
-        [Header("Speed-Based Zoom")]
+        [Header("Distance-Based Zoom")]
         [SerializeField] private bool enableSpeedZoom = true;
-        [SerializeField] private float minDistance = 12f;
-        [SerializeField] private float maxDistance = 20f;
+        [SerializeField] private float idleDistance = 12f;
+        [SerializeField] private float walkDistance = 15f;
+        [SerializeField] private float runDistance = 20f;
         [SerializeField] private float zoomSmoothTime = 1f;
-        [SerializeField] private float speedThreshold = 6f;
+
+        [Header("FOV Control")]
+        [SerializeField] private bool enableFOVControl = true;
+        [SerializeField] private float idleFOV = 40f;
+        [SerializeField] private float walkFOV = 45f;
+        [SerializeField] private float runFOV = 55f;
+        [SerializeField] private float fovSmoothTime = 0.5f;
 
         [Header("Slope Response")]
         [SerializeField] private bool respondToSlope = true;
@@ -63,8 +69,11 @@ namespace Sisifos.Camera
         private float _lastMoveDirection;
         private Quaternion _currentRotation;
         private Vector3 _smoothLookTarget;
+        private float _currentFOV;
+        private float _fovVelocity;
+        private bool _firstFrame = true;
 
-        private void Start()
+        private void Awake()
         {
             InitializeCamera();
         }
@@ -96,21 +105,96 @@ namespace Sisifos.Camera
             {
                 _followComponent = virtualCamera.GetComponent<CinemachineFollow>();
                 virtualCamera.Target.TrackingTarget = player;
+                
+                // FollowOffset'i baştan minDistance ile ayarla
+                if (_followComponent != null)
+                {
+                    _followComponent.FollowOffset = new Vector3(
+                        cameraOffset.x,
+                        cameraOffset.y + cameraHeight,
+                        -idleDistance
+                    );
+                    
+                    // Y ekseninde yumuşak takip için damping ayarla (zıplama için)
+                    _followComponent.TrackerSettings.PositionDamping = new Vector3(
+                        followSmoothTime,    // X damping
+                        verticalSmoothTime,  // Y damping
+                        followSmoothTime     // Z damping
+                    );
+                }
             }
 
-            _currentDistance = cameraDistance;
+            _currentDistance = idleDistance;
             _currentHeightOffset = 0f;
+            _currentFOV = idleFOV;
+            if (virtualCamera != null) virtualCamera.Lens.FieldOfView = _currentFOV;
+
+            // Rotasyon başlangıç değerlerini hesapla ve ayarla
+            if (player != null)
+            {
+                _smoothLookTarget = player.position + cameraOffset;
+                
+                // Hedef rotasyonu hesapla
+                Vector3 directionToTarget = _smoothLookTarget - transform.position;
+                if (directionToTarget.sqrMagnitude > 0.01f && lookIntensity > 0f)
+                {
+                    Quaternion targetRotation = Quaternion.LookRotation(directionToTarget);
+                    Quaternion blendedRotation = Quaternion.Slerp(Quaternion.identity, targetRotation, lookIntensity);
+                    
+                    Vector3 euler = blendedRotation.eulerAngles;
+                    if (euler.x > 180f) euler.x -= 360f;
+                    if (euler.y > 180f) euler.y -= 360f;
+                    euler.x = Mathf.Clamp(euler.x, -maxVerticalAngle, maxVerticalAngle);
+                    euler.y = -euler.y;
+                    euler.y = Mathf.Clamp(euler.y, -maxVerticalAngle, maxVerticalAngle);
+                    
+                    _currentRotation = Quaternion.Euler(euler);
+                    transform.rotation = _currentRotation;
+                }
+            }
         }
 
         private void LateUpdate()
         {
             if (player == null || virtualCamera == null) return;
 
+            // İlk frame'de rotasyonu direkt hedef değere snap et
+            if (_firstFrame)
+            {
+                _firstFrame = false;
+                SnapRotationToTarget();
+            }
+
             UpdateLookAhead();
             UpdateSpeedZoom();
+            UpdateFOV();
             UpdateSlopeResponse();
             ApplyCameraSettings();
             UpdateCameraRotation();
+        }
+
+        private void SnapRotationToTarget()
+        {
+            if (player == null) return;
+            
+            _smoothLookTarget = player.position + cameraOffset;
+            Vector3 directionToTarget = _smoothLookTarget - transform.position;
+            
+            if (directionToTarget.sqrMagnitude > 0.01f && lookIntensity > 0f)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(directionToTarget);
+                Quaternion blendedRotation = Quaternion.Slerp(Quaternion.identity, targetRotation, lookIntensity);
+                
+                Vector3 euler = blendedRotation.eulerAngles;
+                if (euler.x > 180f) euler.x -= 360f;
+                if (euler.y > 180f) euler.y -= 360f;
+                euler.x = Mathf.Clamp(euler.x, -maxVerticalAngle, maxVerticalAngle);
+                euler.y = -euler.y;
+                euler.y = Mathf.Clamp(euler.y, -maxVerticalAngle, maxVerticalAngle);
+                
+                _currentRotation = Quaternion.Euler(euler);
+                transform.rotation = _currentRotation;
+            }
         }
 
         private void UpdateLookAhead()
@@ -146,13 +230,58 @@ namespace Sisifos.Camera
             if (!enableSpeedZoom || _playerController == null) return;
 
             float speed = _playerController.CurrentSpeed;
-            float targetDistance = speed > speedThreshold ? maxDistance : minDistance;
-            
-            // Hıza göre interpolasyon
-            float speedRatio = Mathf.Clamp01(speed / speedThreshold);
-            targetDistance = Mathf.Lerp(minDistance, maxDistance, speedRatio);
+            float targetDistance;
+
+            // Hıza göre hedef mesafe belirle
+            if (speed < 0.1f)
+            {
+                targetDistance = idleDistance;
+            }
+            else if (speed < _playerController.WalkSpeed + 0.1f)
+            {
+                // Idle -> Walk arası interpolasyon
+                float t = Mathf.Clamp01(speed / _playerController.WalkSpeed);
+                targetDistance = Mathf.Lerp(idleDistance, walkDistance, t);
+            }
+            else
+            {
+                // Walk -> Run arası interpolasyon
+                float runRange = _playerController.RunSpeed - _playerController.WalkSpeed;
+                float t = Mathf.Clamp01((speed - _playerController.WalkSpeed) / runRange);
+                targetDistance = Mathf.Lerp(walkDistance, runDistance, t);
+            }
 
             _currentDistance = Mathf.SmoothDamp(_currentDistance, targetDistance, ref _distanceVelocity, zoomSmoothTime);
+        }
+
+        private void UpdateFOV()
+        {
+            if (!enableFOVControl || _playerController == null || virtualCamera == null) return;
+
+            float speed = _playerController.CurrentSpeed;
+            float targetFOV;
+
+            // Hıza göre hedef FOV belirle
+            if (speed < 0.1f)
+            {
+                targetFOV = idleFOV;
+            }
+            else if (speed < _playerController.WalkSpeed + 0.1f)
+            {
+                // Idle -> Walk arası interpolasyon
+                float t = Mathf.Clamp01(speed / _playerController.WalkSpeed);
+                targetFOV = Mathf.Lerp(idleFOV, walkFOV, t);
+            }
+            else
+            {
+                // Walk -> Run arası interpolasyon
+                float runRange = _playerController.RunSpeed - _playerController.WalkSpeed;
+                float t = Mathf.Clamp01((speed - _playerController.WalkSpeed) / runRange);
+                targetFOV = Mathf.Lerp(walkFOV, runFOV, t);
+            }
+
+            _currentFOV = Mathf.SmoothDamp(_currentFOV, targetFOV, ref _fovVelocity, fovSmoothTime);
+            virtualCamera.Lens.FieldOfView = _currentFOV;
         }
 
         private void UpdateSlopeResponse()
@@ -248,7 +377,7 @@ namespace Sisifos.Camera
         private System.Collections.IEnumerator TransitionToPreset(CameraPreset preset, float duration)
         {
             float elapsed = 0f;
-            float startDistance = cameraDistance;
+            float startDistance = _currentDistance;
             float startHeight = cameraHeight;
             Vector3 startOffset = cameraOffset;
 
@@ -258,7 +387,7 @@ namespace Sisifos.Camera
                 float t = elapsed / duration;
                 t = t * t * (3f - 2f * t); // Smoothstep
 
-                cameraDistance = Mathf.Lerp(startDistance, preset.distance, t);
+                _currentDistance = Mathf.Lerp(startDistance, preset.distance, t);
                 cameraHeight = Mathf.Lerp(startHeight, preset.height, t);
                 cameraOffset = Vector3.Lerp(startOffset, preset.offset, t);
 

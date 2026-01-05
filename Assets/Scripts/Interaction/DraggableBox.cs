@@ -63,6 +63,16 @@ namespace Sisifos.Interaction
         /// Halatın gerginlik değeri (0 = gevşek, 1 = maksimum gergin)
         /// </summary>
         public float Tension => _currentTension;
+        
+        /// <summary>
+        /// Rotasyondan bağımsız stabil bağlantı noktası.
+        /// Kutu dönerken ipin sapıtmamasını sağlar.
+        /// </summary>
+        public Vector3 GetStableAttachPoint()
+        {
+            // Sadece Y offset'i kullan, X ve Z dünya koordinatlarında sabit
+            return transform.position + new Vector3(0f, attachPointOffset.y, 0f);
+        }
         #endregion
 
         private void Awake()
