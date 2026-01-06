@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8ed0eff8cc4bbb444844856753f7979c, type: 3}
+  m_Name: Stone
+  m_EditorClassIdentifier: Assembly-CSharp::Sisifos.Audio.SurfaceDefinition
+  footstepSounds:
+  - {fileID: 8300000, guid: 8c8e6e375898d59459a2adb215bc4c1d, type: 3}
+  - {fileID: 8300000, guid: 04ea4d98436a7a243a36e8512136fabf, type: 3}
+  - {fileID: 8300000, guid: 2cb30fb096739b24e8c1d68581148e0a, type: 3}
+  - {fileID: 8300000, guid: 10310fde07fba094cb2611e6053d8804, type: 3}
+  - {fileID: 8300000, guid: fb2e72a991bfcc647ae7a4072a00e3ac, type: 3}
+  - {fileID: 8300000, guid: 7b7802dc4ec1efa4b857a4d51f26f2d3, type: 3}
+  - {fileID: 8300000, guid: 38aa4bb22accf2341b5572525227aa3e, type: 3}
+  - {fileID: 8300000, guid: dc54e4ca03d3c3440b1b678049f17e33, type: 3}
+  - {fileID: 8300000, guid: 86dd18ef704106c4d824eaeec714dc1b, type: 3}
+  volumeMultiplier: 1

@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8faa968baade37b44aa1d173b80506d6, type: 3}
+  m_Name: Surface Collection
+  m_EditorClassIdentifier: Assembly-CSharp::Sisifos.Audio.SurfaceCollection
+  defaultSurface: {fileID: 11400000, guid: 0ff508bdc096dc9448df37cf8b7388a7, type: 2}
+  textureSurfaces:
+  - textureName: Stone
+    surface: {fileID: 11400000, guid: 0ff508bdc096dc9448df37cf8b7388a7, type: 2}
+  tagSurfaces:
+  - tag: Ground
+    surface: {fileID: 11400000, guid: 0ff508bdc096dc9448df37cf8b7388a7, type: 2}

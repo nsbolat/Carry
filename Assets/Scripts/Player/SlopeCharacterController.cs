@@ -26,8 +26,10 @@ namespace Sisifos.Player
         [SerializeField] private float maxTensionEffect = 0.3f;
 
         [Header("Jump Settings")]
-        [SerializeField] private float jumpForce = 8f;
-        [SerializeField] private float gravity = -20f;
+        [SerializeField] private float jumpForce = 10f;
+        [SerializeField] private float gravity = -15f;
+        [Tooltip("Düşerken yerçekimi çarpanı - daha hızlı iniş için")]
+        [SerializeField] private float fallMultiplier = 2f;
         [SerializeField] private float groundCheckDistance = 0.3f;
         [SerializeField] private LayerMask groundLayer;
 
@@ -358,11 +360,17 @@ namespace Sisifos.Player
             if (_isGrounded && _velocity.y < 0)
             {
                 _velocity.y = -2f; // Yere yapışık tut
-                _isJumping = false; // Yere indiğinde jump false
+                _isJumping = false;
             }
             else
             {
-                _velocity.y += gravity * Time.deltaTime;
+                // Düşerken daha hızlı yerçekimi (daha doğal his)
+                float currentGravity = gravity;
+                if (_velocity.y < 0)
+                {
+                    currentGravity *= fallMultiplier;
+                }
+                _velocity.y += currentGravity * Time.deltaTime;
             }
         }
 

@@ -14,8 +14,11 @@ namespace Sisifos.Interaction
         [Tooltip("Maksimum taşınabilir kutu sayısı (0 = sınırsız)")]
         [SerializeField] private int maxBoxes = 5;
         
-        [Tooltip("Halatın oyuncuya bağlandığı nokta offset")]
-        [SerializeField] private Vector3 attachPointOffset = new Vector3(0f, 0.5f, -0.5f);
+        [Tooltip("Halatın bağlanacağı kemik (spine/sırt)")]
+        [SerializeField] private Transform ropeAttachBone;
+        
+        [Tooltip("Kemik üzerindeki ek offset")]
+        [SerializeField] private Vector3 attachPointOffset = new Vector3(0f, 0f, -0.2f);
 
         [Header("Interaction")]
         [Tooltip("Etkileşim için kutu arama yarıçapı")]
@@ -42,7 +45,23 @@ namespace Sisifos.Interaction
         public bool CanAttachMore => maxBoxes <= 0 || _attachedBoxes.Count < maxBoxes;
         public DraggableBox NearestInteractableBox => _nearestBox;
         public IReadOnlyList<DraggableBox> AttachedBoxes => _attachedBoxes.AsReadOnly();
-        public Vector3 AttachPoint => transform.position + transform.TransformDirection(attachPointOffset);
+        
+        /// <summary>
+        /// Halatın bağlandığı nokta - spine bone varsa onu kullan
+        /// </summary>
+        public Vector3 AttachPoint
+        {
+            get
+            {
+                if (ropeAttachBone != null)
+                {
+                    // Bone pozisyonu + lokal offset
+                    return ropeAttachBone.position + ropeAttachBone.TransformDirection(attachPointOffset);
+                }
+                // Fallback - ana transform
+                return transform.position + transform.TransformDirection(attachPointOffset);
+            }
+        }
         #endregion
 
         private void Awake()
