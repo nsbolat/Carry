@@ -18,10 +18,15 @@ namespace Sisifos.Core
             Playing
         }
 
+        [Header("Developer Mode")]
+        [Tooltip("Aktif olduğunda menu ve intro atlanır, direkt gameplay başlar")]
+        [SerializeField] private bool developerMode = false;
+
         [Header("Debug")]
         [SerializeField] private GameState currentState = GameState.MainMenu;
 
         public GameState CurrentState => currentState;
+        public bool IsDeveloperMode => developerMode;
 
         // Events
         public event Action<GameState> OnStateChanged;
@@ -30,18 +35,30 @@ namespace Sisifos.Core
 
         private void Awake()
         {
-            // Singleton pattern
             if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
                 return;
             }
             Instance = this;
+
+            // Developer mode: direkt Playing state ile başla
+            if (developerMode)
+            {
+                currentState = GameState.Playing;
+            }
         }
 
-        /// <summary>
-        /// Oyun durumunu değiştirir ve event'leri tetikler.
-        /// </summary>
+        private void Start()
+        {
+            // Developer mode'da direkt gameplay event'ini tetikle
+            if (developerMode)
+            {
+                Debug.Log("[GameStateManager] Developer Mode aktif - Menu ve intro atlandı");
+                OnGameStarted?.Invoke();
+            }
+        }
+
         public void SetState(GameState newState)
         {
             if (currentState == newState) return;
@@ -49,11 +66,8 @@ namespace Sisifos.Core
             GameState previousState = currentState;
             currentState = newState;
 
-            Debug.Log($"[GameStateManager] State changed: {previousState} -> {newState}");
-
             OnStateChanged?.Invoke(newState);
 
-            // Specific events
             if (newState == GameState.Playing)
             {
                 OnGameStarted?.Invoke();
@@ -64,38 +78,24 @@ namespace Sisifos.Core
             }
         }
 
-        /// <summary>
-        /// Oyunun başlatılmasını tetikler (Start butonundan çağrılır).
-        /// </summary>
         public void StartGame()
         {
             if (currentState != GameState.MainMenu) return;
             SetState(GameState.Transitioning);
         }
 
-        /// <summary>
-        /// Gameplay moduna geçiş yapar.
-        /// </summary>
         public void EnterGameplay()
         {
             SetState(GameState.Playing);
         }
 
-        /// <summary>
-        /// Ana menüye döner.
-        /// </summary>
         public void ReturnToMenu()
         {
             SetState(GameState.MainMenu);
         }
 
-        /// <summary>
-        /// Oyundan çıkış yapar.
-        /// </summary>
         public void QuitGame()
         {
-            Debug.Log("[GameStateManager] Quitting game...");
-            
             #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
             #else

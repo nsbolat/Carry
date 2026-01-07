@@ -35,8 +35,8 @@ Material:
     - _CloudSpeed: 0.2
     - _EnableClouds: 0.6
     - _HorizonHeight: 0.01
-    - _SunIntensity: 2.09
-    - _SunSize: 0.04
+    - _SunIntensity: 1.18
+    - _SunSize: 0.013
     - _TopBlend: 0.143
     m_Colors:
     - _BottomColor: {r: 0.29999998, g: 0.39999998, b: 0.5, a: 1}

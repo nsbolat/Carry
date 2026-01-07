@@ -31,6 +31,22 @@ namespace Sisifos.UI
                 return;
             }
 
+            // Developer mode: menu ve intro atla
+            if (_gameState.IsDeveloperMode)
+            {
+                // UI'ı gizle
+                if (menuUI != null)
+                {
+                    menuUI.gameObject.SetActive(false);
+                }
+                // Menu kamerasını deaktif et
+                if (menuCamera != null)
+                {
+                    menuCamera.SetMenuCameraActive(false);
+                }
+                return;
+            }
+
             SetupEventListeners();
             InitializeMenu();
         }
