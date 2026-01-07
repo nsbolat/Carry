@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Sisifos.Interaction;
+using Sisifos.Core;
 
 namespace Sisifos.Player
 {
@@ -20,17 +21,53 @@ namespace Sisifos.Player
         [Tooltip("Kutu taşıma controller'ı (opsiyonel)")]
         [SerializeField] private BoxCarrier boxCarrier;
 
+        [Header("Menu Integration")]
+        [Tooltip("Oyun başladığında input'u devre dışı bırak (menu için)")]
+        [SerializeField] private bool startDisabled = true;
+
         private SlopeCharacterController _characterController;
         private InputActionMap _playerActionMap;
         private InputAction _moveAction;
         private InputAction _jumpAction;
         private InputAction _sprintAction;
         private InputAction _interactAction;
+        
+        private bool _inputEnabled = true;
 
         private void Awake()
         {
             _characterController = GetComponent<SlopeCharacterController>();
             SetupInputActions();
+        }
+
+        private void Start()
+        {
+            // GameStateManager event'lerine abone ol
+            if (GameStateManager.Instance != null)
+            {
+                GameStateManager.Instance.OnGameStarted += EnableInput;
+                GameStateManager.Instance.OnMenuEntered += DisableInput;
+                
+                // Başlangıç durumunu ayarla
+                if (startDisabled && GameStateManager.Instance.CurrentState == GameStateManager.GameState.MainMenu)
+                {
+                    DisableInput();
+                }
+            }
+            else if (startDisabled)
+            {
+                DisableInput();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // Event'lerden aboneliği kaldır
+            if (GameStateManager.Instance != null)
+            {
+                GameStateManager.Instance.OnGameStarted -= EnableInput;
+                GameStateManager.Instance.OnMenuEntered -= DisableInput;
+            }
         }
 
         private void SetupInputActions()
@@ -104,28 +141,73 @@ namespace Sisifos.Player
         {
             if (_moveAction == null || _characterController == null) return;
             
+            // Input devre dışıysa hareket verme
+            if (!_inputEnabled)
+            {
+                _characterController.SetMoveInput(Vector2.zero);
+                return;
+            }
+            
             Vector2 moveInput = _moveAction.ReadValue<Vector2>();
             _characterController.SetMoveInput(moveInput);
         }
 
+        #region Public Methods
+        /// <summary>
+        /// Oyuncu input'unu etkinleştirir.
+        /// </summary>
+        public void EnableInput()
+        {
+            _inputEnabled = true;
+            Debug.Log("[PlayerInputHandler] Input enabled");
+        }
+
+        /// <summary>
+        /// Oyuncu input'unu devre dışı bırakır.
+        /// </summary>
+        public void DisableInput()
+        {
+            _inputEnabled = false;
+            
+            // Mevcut hareketi sıfırla
+            if (_characterController != null)
+            {
+                _characterController.SetMoveInput(Vector2.zero);
+                _characterController.SetRunning(false);
+            }
+            
+            Debug.Log("[PlayerInputHandler] Input disabled");
+        }
+
+        /// <summary>
+        /// Input'un aktif olup olmadığını döndürür.
+        /// </summary>
+        public bool IsInputEnabled => _inputEnabled;
+        #endregion
+
         #region Input Callbacks
         private void OnJumpPerformed(InputAction.CallbackContext context)
         {
+            if (!_inputEnabled) return;
             _characterController.SetJumpInput(true);
         }
 
         private void OnSprintStarted(InputAction.CallbackContext context)
         {
+            if (!_inputEnabled) return;
             _characterController.SetRunning(true);
         }
 
         private void OnSprintCanceled(InputAction.CallbackContext context)
         {
+            if (!_inputEnabled) return;
             _characterController.SetRunning(false);
         }
 
         private void OnInteractPerformed(InputAction.CallbackContext context)
         {
+            if (!_inputEnabled) return;
+            
             Debug.Log("E tuşuna basıldı! (Interact performed)");
             
             if (boxCarrier != null)

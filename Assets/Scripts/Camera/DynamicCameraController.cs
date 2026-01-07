@@ -53,6 +53,18 @@ namespace Sisifos.Camera
         [SerializeField] private float rotationSmoothSpeed = 3f;
         [Tooltip("Maksimum dikey rotasyon açısı")]
         [SerializeField] private float maxVerticalAngle = 15f;
+        [Tooltip("Kamera rotasyon offset'i (Euler açıları)")]
+        [SerializeField] private Vector3 rotationOffset = Vector3.zero;
+
+        [Header("Menu Mode Settings")]
+        [Tooltip("Menü modunda kamera mesafesi")]
+        [SerializeField] private float menuDistance = 25f;
+        [Tooltip("Menü modunda kamera yüksekliği")]
+        [SerializeField] private float menuHeight = 5f;
+        [Tooltip("Menü modunda FOV")]
+        [SerializeField] private float menuFOV = 50f;
+        [Tooltip("Menü/Gameplay geçiş süresi")]
+        [SerializeField] private float menuTransitionDuration = 2f;
 
         // Components
         private CinemachineFollow _followComponent;
@@ -72,6 +84,8 @@ namespace Sisifos.Camera
         private float _currentFOV;
         private float _fovVelocity;
         private bool _firstFrame = true;
+        private bool _isMenuMode = false;
+        private Coroutine _menuTransitionCoroutine;
 
         private void Awake()
         {
@@ -148,6 +162,9 @@ namespace Sisifos.Camera
                     euler.y = -euler.y;
                     euler.y = Mathf.Clamp(euler.y, -maxVerticalAngle, maxVerticalAngle);
                     
+                    // Rotation offset ekle
+                    euler += rotationOffset;
+                    
                     _currentRotation = Quaternion.Euler(euler);
                     transform.rotation = _currentRotation;
                 }
@@ -163,6 +180,13 @@ namespace Sisifos.Camera
             {
                 _firstFrame = false;
                 SnapRotationToTarget();
+            }
+
+            // Menü modunda dinamik güncellemeleri atla
+            if (_isMenuMode)
+            {
+                UpdateCameraRotation();
+                return;
             }
 
             UpdateLookAhead();
@@ -345,7 +369,10 @@ namespace Sisifos.Camera
                 if (euler.y > 180f) euler.y -= 360f;
                 euler.x = Mathf.Clamp(euler.x, -maxVerticalAngle, maxVerticalAngle);
                 euler.y = -euler.y; // Y rotasyonunu tersine çevir
-                euler.y = Mathf.Clamp(euler.y, -maxVerticalAngle, maxVerticalAngle); // Y limiti
+                euler.y = Mathf.Clamp(euler.y, -maxVerticalAngle, maxVerticalAngle);
+                
+                // Rotation offset ekle
+                euler += rotationOffset;
                 blendedRotation = Quaternion.Euler(euler);
                 
                 // Smooth rotasyon uygula
@@ -356,6 +383,33 @@ namespace Sisifos.Camera
         }
 
         #region Public Methods
+        /// <summary>
+        /// Menü modunu açar/kapatır ve kamera ayarlarını günceller.
+        /// </summary>
+        public void SetMenuMode(bool menuMode)
+        {
+            if (_isMenuMode == menuMode) return;
+
+            _isMenuMode = menuMode;
+            Debug.Log($"[DynamicCameraController] Menu mode: {menuMode}");
+
+            if (_menuTransitionCoroutine != null)
+            {
+                StopCoroutine(_menuTransitionCoroutine);
+            }
+
+            if (menuMode)
+            {
+                // Menü moduna geç
+                _menuTransitionCoroutine = StartCoroutine(TransitionToMenuMode());
+            }
+            else
+            {
+                // Gameplay moduna geç
+                _menuTransitionCoroutine = StartCoroutine(TransitionToGameplayMode());
+            }
+        }
+
         /// <summary>
         /// Kamera ayarlarını geçici olarak değiştirir (zone trigger'lar için).
         /// </summary>
@@ -404,6 +458,85 @@ namespace Sisifos.Camera
                 height = 3f,
                 offset = new Vector3(0f, 2f, 0f)
             }, duration);
+        }
+
+        private System.Collections.IEnumerator TransitionToMenuMode()
+        {
+            float elapsed = 0f;
+            float startDistance = _currentDistance;
+            float startHeight = cameraHeight;
+            float startFOV = _currentFOV;
+
+            while (elapsed < menuTransitionDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / menuTransitionDuration;
+                t = t * t * (3f - 2f * t); // Smoothstep
+
+                _currentDistance = Mathf.Lerp(startDistance, menuDistance, t);
+                cameraHeight = Mathf.Lerp(startHeight, menuHeight, t);
+                _currentFOV = Mathf.Lerp(startFOV, menuFOV, t);
+                
+                if (virtualCamera != null)
+                {
+                    virtualCamera.Lens.FieldOfView = _currentFOV;
+                }
+
+                // Follow offset'i güncelle
+                if (_followComponent != null)
+                {
+                    _followComponent.FollowOffset = new Vector3(
+                        cameraOffset.x,
+                        cameraOffset.y + cameraHeight,
+                        -_currentDistance
+                    );
+                }
+
+                yield return null;
+            }
+
+            _menuTransitionCoroutine = null;
+        }
+
+        private System.Collections.IEnumerator TransitionToGameplayMode()
+        {
+            float elapsed = 0f;
+            float startDistance = _currentDistance;
+            float startHeight = cameraHeight;
+            float startFOV = _currentFOV;
+
+            // Hedef değerler (idle/default gameplay değerleri)
+            float targetHeight = 3f; // Orijinal cameraHeight
+            
+            while (elapsed < menuTransitionDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = elapsed / menuTransitionDuration;
+                t = t * t * (3f - 2f * t); // Smoothstep
+
+                _currentDistance = Mathf.Lerp(startDistance, idleDistance, t);
+                cameraHeight = Mathf.Lerp(startHeight, targetHeight, t);
+                _currentFOV = Mathf.Lerp(startFOV, idleFOV, t);
+                
+                if (virtualCamera != null)
+                {
+                    virtualCamera.Lens.FieldOfView = _currentFOV;
+                }
+
+                // Follow offset'i güncelle
+                if (_followComponent != null)
+                {
+                    _followComponent.FollowOffset = new Vector3(
+                        cameraOffset.x,
+                        cameraOffset.y + cameraHeight,
+                        -_currentDistance
+                    );
+                }
+
+                yield return null;
+            }
+
+            _menuTransitionCoroutine = null;
         }
         #endregion
 

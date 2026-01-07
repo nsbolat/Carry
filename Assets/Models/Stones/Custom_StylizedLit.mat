@@ -36,9 +36,9 @@ Material:
     - _EnableRim: 1
     - _FogEnd: 80
     - _FogStart: 20
-    - _RimIntensity: 0.648
-    - _RimPower: 1.87
-    - _RimSoftness: 0.145
+    - _RimIntensity: 0.188
+    - _RimPower: 1.73
+    - _RimSoftness: 0.298
     - _ShadowBrightness: 0.099
     - _ShadowOffset: -0.068
     - _ShadowSoftness: 0.01
