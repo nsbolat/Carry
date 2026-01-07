@@ -20,6 +20,19 @@ namespace Sisifos.Interaction
         [Tooltip("Kemik üzerindeki ek offset")]
         [SerializeField] private Vector3 attachPointOffset = new Vector3(0f, 0f, -0.2f);
 
+        [Header("Funnel Layout - Huni Dizilimi")]
+        [Tooltip("Kutular arası yatay mesafe (huni genişliği)")]
+        [SerializeField] private float funnelSpreadX = 1.5f;
+        
+        [Tooltip("Her kutu için arkaya (Z) eklenen mesafe")]
+        [SerializeField] private float funnelSpreadZ = 1.0f;
+        
+        [Tooltip("Minimum halat uzunluğu - kutular bu mesafeden yakın olamaz")]
+        [SerializeField] private float baseRopeLength = 1.0f;
+        
+        [Tooltip("Funnel offset'e eklenen ekstra halat boşluğu")]
+        [SerializeField] private float ropeLengthIncrement = 0.3f;
+
         [Header("Interaction")]
         [Tooltip("Etkileşim için kutu arama yarıçapı")]
         [SerializeField] private float detectionRadius = 3f;
@@ -30,6 +43,13 @@ namespace Sisifos.Interaction
         [Header("Visual")]
         [Tooltip("Halat görselleştirici (opsiyonel)")]
         [SerializeField] private RopeVisualizer ropeVisualizer;
+
+        [Header("Audio")]
+        [Tooltip("Kutu bağlandığında çalınacak ses")]
+        [SerializeField] private AudioClip attachSound;
+        
+        [Tooltip("Ses kaynağı (opsiyonel - yoksa otomatik oluşturulur)")]
+        [SerializeField] private AudioSource audioSource;
 
         // Bağlı kutuların listesi (sıralı - ilk oyuncuya bağlı)
         private List<DraggableBox> _attachedBoxes = new List<DraggableBox>();
@@ -129,25 +149,25 @@ namespace Sisifos.Interaction
         }
 
         /// <summary>
-        /// Belirli bir kutuyu bağlar
+        /// Belirli bir kutuyu bağlar - Tüm kutular oyuncuya doğrudan bağlanır ve huni şeklinde dizilir
         /// </summary>
         public void AttachBox(DraggableBox box)
         {
             if (box == null || box.IsAttached) return;
             if (!CanAttachMore) return;
 
-            // Bağlantı hedefini belirle
-            if (_attachedBoxes.Count == 0)
-            {
-                // İlk kutu - oyuncuya bağla
-                box.AttachTo(transform, null);
-            }
-            else
-            {
-                // Sonraki kutular - son kutuya bağla
-                DraggableBox lastBox = _attachedBoxes[_attachedBoxes.Count - 1];
-                box.AttachTo(lastBox.transform, lastBox);
-            }
+            // Kutu indeksi (0'dan başlar)
+            int boxIndex = _attachedBoxes.Count;
+            
+            // Huni offset hesapla
+            Vector3 funnelOffset = CalculateFunnelOffset(boxIndex);
+            
+            // Halat uzunluğu: SABİT DEĞER - offset'ten bağımsız
+            // baseRopeLength Inspector'dan ayarlanabilir
+            float ropeLength = baseRopeLength;
+            
+            // Tüm kutular oyuncuya doğrudan bağlanır (zincirleme değil)
+            box.AttachToPlayer(transform, funnelOffset, ropeLength, boxIndex);
 
             _attachedBoxes.Add(box);
             
@@ -160,7 +180,70 @@ namespace Sisifos.Interaction
             // Ağırlık güncelle
             UpdateCarriedWeight();
             
-            Debug.Log($"Box attached! Total: {_attachedBoxes.Count}");
+            // Halat sesi çal
+            PlayAttachSound();
+            
+            Debug.Log($"Box attached! Total: {_attachedBoxes.Count}, Index: {boxIndex}, Funnel Offset: {funnelOffset}");
+        }
+        
+        /// <summary>
+        /// Kutu bağlandığında sesi çalar
+        /// </summary>
+        private void PlayAttachSound()
+        {
+            if (attachSound == null) return;
+            
+            // AudioSource yoksa oluştur
+            if (audioSource == null)
+            {
+                audioSource = GetComponent<AudioSource>();
+                if (audioSource == null)
+                {
+                    audioSource = gameObject.AddComponent<AudioSource>();
+                    audioSource.playOnAwake = false;
+                    audioSource.spatialBlend = 0f; // 2D ses
+                }
+            }
+            
+            audioSource.PlayOneShot(attachSound);
+        }
+        
+        /// <summary>
+        /// Huni/yelpaze dizilimi için offset hesaplar.
+        /// Kutular zigzag şeklinde yanlara açılarak dizilir:
+        ///   Oyuncu
+        ///     |
+        ///   [0]  ← İlk kutu, tam arkada ortada
+        ///  /   \
+        /// [1]  [2]  ← Sol ve sağa açılıyor
+        ///  |     |
+        /// [3]  [4]  ← Daha arkada, daha açık
+        /// </summary>
+        private Vector3 CalculateFunnelOffset(int boxIndex)
+        {
+            if (boxIndex == 0)
+            {
+                // İlk kutu tam ortada, biraz arkada
+                return new Vector3(0f, 0f, -funnelSpreadZ);
+            }
+            
+            // Diğer kutular için: çift indeksler sağda, tek indeksler solda
+            // boxIndex 1 -> sol 1. sıra
+            // boxIndex 2 -> sağ 1. sıra  
+            // boxIndex 3 -> sol 2. sıra
+            // boxIndex 4 -> sağ 2. sıra
+            
+            int pairIndex = (boxIndex - 1) / 2; // Hangi "çift" te (0, 1, 2...)
+            bool isLeft = (boxIndex % 2 == 1);  // Tek indeksler sol, çift indeksler sağ
+            
+            // X offset: Her çift için biraz daha dışa açıl
+            float xMultiplier = pairIndex + 1;
+            float xOffset = isLeft ? -xMultiplier * funnelSpreadX : xMultiplier * funnelSpreadX;
+            
+            // Z offset: Her kutu kendi sırasına göre arkaya
+            float zOffset = -(boxIndex + 1) * funnelSpreadZ;
+            
+            return new Vector3(xOffset, 0f, zOffset);
         }
 
 

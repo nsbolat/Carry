@@ -5,9 +5,8 @@ namespace Sisifos.Interaction
 {
     /// <summary>
     /// Verlet Integration kullanarak gerçekçi halat fiziği simülasyonu yapar.
-    /// BoxCarrier ile birlikte çalışır. Çoklu kutu zincirleme desteği var.
+    /// Her kutu için ayrı LineRenderer oluşturur - huni dizilimi için optimize edilmiş.
     /// </summary>
-    [RequireComponent(typeof(LineRenderer))]
     public class RopeVisualizer : MonoBehaviour
     {
         [Header("Rope Settings")]
@@ -46,22 +45,23 @@ namespace Sisifos.Interaction
         [Tooltip("Texture'un halat üzerinde kaç kez tekrarlanacağı (X: uzunluk, Y: genişlik)")]
         [SerializeField] private Vector2 textureScale = new Vector2(2f, 1f);
 
-        private LineRenderer _lineRenderer;
-        
-        // Her bağlantı için ayrı Verlet simülasyonu
+        // Her kutu için ayrı LineRenderer ve bağlantı verisi
         private List<RopeConnection> _connections = new List<RopeConnection>();
-        private List<Vector3> _allPoints = new List<Vector3>();
+        
+        // Materyal instance (paylaşımlı)
+        private Material _sharedMaterial;
 
         private class RopeConnection
         {
+            public LineRenderer lineRenderer;
             public List<RopeSegment> segments = new List<RopeSegment>();
             public float targetRopeLength;
             public float currentRopeLength;
             public bool isInitialized;
             public Vector3 smoothedStartPos;
             public Vector3 smoothedEndPos;
-            public Vector3 actualStartPos; // Gerçek başlangıç pozisyonu (çizim için)
-            public Vector3 actualEndPos; // Gerçek kutu pozisyonu (çizim için)
+            public Vector3 actualStartPos;
+            public Vector3 actualEndPos;
         }
 
         private struct RopeSegment
@@ -78,81 +78,98 @@ namespace Sisifos.Interaction
 
         private void Awake()
         {
-            _lineRenderer = GetComponent<LineRenderer>();
-            SetupLineRenderer();
+            CreateSharedMaterial();
         }
 
-        private void SetupLineRenderer()
+        private void CreateSharedMaterial()
         {
-            _lineRenderer.startWidth = ropeWidth;
-            _lineRenderer.endWidth = ropeWidth;
-            _lineRenderer.startColor = ropeColor;
-            _lineRenderer.endColor = ropeColor;
-            _lineRenderer.positionCount = 0;
-            _lineRenderer.useWorldSpace = true;
-            
-            _lineRenderer.textureMode = LineTextureMode.Tile;
-            _lineRenderer.textureScale = textureScale;
-            
-            // Aydınlatma ve gölge için gerekli
-            _lineRenderer.generateLightingData = true;
-
             if (ropeMaterial != null)
             {
-                // Materyal instance'ı oluştur (orijinali değiştirmemek için)
-                _lineRenderer.material = new Material(ropeMaterial);
+                _sharedMaterial = new Material(ropeMaterial);
             }
             else
             {
-                // URP için varsayılan Lit shader (gölge desteği için)
+                // URP için varsayılan Lit shader
                 Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
                 if (litShader != null)
                 {
-                    _lineRenderer.material = new Material(litShader);
-                    _lineRenderer.material.SetColor("_BaseColor", ropeColor);
+                    _sharedMaterial = new Material(litShader);
+                    _sharedMaterial.SetColor("_BaseColor", ropeColor);
                 }
                 else
                 {
-                    // Fallback
-                    _lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
-                    _lineRenderer.material.color = ropeColor;
+                    _sharedMaterial = new Material(Shader.Find("Sprites/Default"));
+                    _sharedMaterial.color = ropeColor;
                 }
             }
-            
-            // Gölge ayarları
-            _lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-            _lineRenderer.receiveShadows = true;
         }
 
         /// <summary>
-        /// Halat görselini oyuncu ve bağlı kutular için günceller
+        /// Yeni bir LineRenderer oluşturur ve ayarlar
+        /// </summary>
+        private LineRenderer CreateLineRenderer(int index)
+        {
+            GameObject ropeObj = new GameObject($"Rope_{index}");
+            ropeObj.transform.SetParent(transform);
+            ropeObj.transform.localPosition = Vector3.zero;
+            
+            LineRenderer lr = ropeObj.AddComponent<LineRenderer>();
+            
+            lr.startWidth = ropeWidth;
+            lr.endWidth = ropeWidth;
+            lr.startColor = ropeColor;
+            lr.endColor = ropeColor;
+            lr.positionCount = 0;
+            lr.useWorldSpace = true;
+            
+            lr.textureMode = LineTextureMode.Tile;
+            lr.textureScale = textureScale;
+            lr.generateLightingData = true;
+            
+            if (_sharedMaterial != null)
+            {
+                lr.material = _sharedMaterial;
+            }
+            
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            lr.receiveShadows = true;
+            
+            return lr;
+        }
+
+        /// <summary>
+        /// Halat görselini oyuncu ve bağlı kutular için günceller.
+        /// Her kutu için ayrı LineRenderer kullanır.
         /// </summary>
         public void UpdateRope(Vector3 playerAttachPoint, List<DraggableBox> boxes)
         {
             if (boxes == null || boxes.Count == 0)
             {
-                _lineRenderer.positionCount = 0;
-                _connections.Clear();
+                HideRope();
                 return;
             }
 
-            // Bağlantı sayısını kontrol et
-            int requiredConnections = boxes.Count;
-            
-            while (_connections.Count < requiredConnections)
+            // Bağlantı sayısını kontrol et - fazla olanları kaldır, eksik olanları ekle
+            while (_connections.Count < boxes.Count)
             {
-                _connections.Add(new RopeConnection());
+                RopeConnection newConnection = new RopeConnection();
+                newConnection.lineRenderer = CreateLineRenderer(_connections.Count);
+                _connections.Add(newConnection);
             }
-            while (_connections.Count > requiredConnections)
+            
+            while (_connections.Count > boxes.Count)
             {
-                _connections.RemoveAt(_connections.Count - 1);
+                int lastIndex = _connections.Count - 1;
+                if (_connections[lastIndex].lineRenderer != null)
+                {
+                    Destroy(_connections[lastIndex].lineRenderer.gameObject);
+                }
+                _connections.RemoveAt(lastIndex);
             }
 
             float deltaTime = Time.deltaTime;
             
-            // Her bağlantıyı güncelle
-            Vector3 previousPoint = playerAttachPoint;
-            
+            // Her kutu için ayrı halat güncelle
             for (int i = 0; i < boxes.Count; i++)
             {
                 if (boxes[i] == null) continue;
@@ -160,8 +177,8 @@ namespace Sisifos.Interaction
                 Vector3 currentPoint = boxes[i].GetStableAttachPoint();
                 RopeConnection connection = _connections[i];
                 
-                // Başlangıç noktası her zaman direkt takip eder (karaktere bağlı kalması için)
-                Vector3 startPos = previousPoint;
+                // Tüm halatlar oyuncudan başlar
+                Vector3 startPos = playerAttachPoint;
                 
                 // İlk kez başlat
                 if (!connection.isInitialized)
@@ -170,7 +187,7 @@ namespace Sisifos.Interaction
                 }
                 else
                 {
-                    // Sadece bitiş noktasını yumuşat (kutu tarafı)
+                    // Sadece bitiş noktasını yumuşat
                     connection.smoothedEndPos = Vector3.Lerp(
                         connection.smoothedEndPos, 
                         currentPoint, 
@@ -186,19 +203,16 @@ namespace Sisifos.Interaction
                     );
                 }
                 
-                // Gerçek pozisyonları kaydet (çizim için)
+                // Gerçek pozisyonları kaydet
                 connection.actualStartPos = startPos;
                 connection.actualEndPos = currentPoint;
                 
-                // Fizik simülasyonu - başlangıç direkt, bitiş yumuşatılmış
+                // Fizik simülasyonu
                 SimulateConnection(connection, startPos, connection.smoothedEndPos);
                 
-                // Sonraki bağlantı için kutu pozisyonunu kullan (yumuşatılmamış)
-                previousPoint = currentPoint;
+                // Bu bağlantının LineRenderer'ını güncelle
+                DrawConnection(connection);
             }
-            
-            // Tüm noktaları birleştir ve çiz
-            DrawAllConnections();
         }
 
         private void InitializeConnection(RopeConnection connection, Vector3 start, Vector3 end)
@@ -214,7 +228,7 @@ namespace Sisifos.Interaction
                 float t = (float)i / segmentsPerConnection;
                 Vector3 pos = Vector3.Lerp(start, end, t);
                 
-                // Başlangıçta doğal sarkma ekle
+                // Doğal sarkma ekle
                 float sagFactor = 4f * t * (1f - t);
                 pos.y -= sagAmount * sagFactor;
                 
@@ -234,17 +248,14 @@ namespace Sisifos.Interaction
                 RopeSegment segment = connection.segments[i];
                 Vector3 velocity = segment.currentPos - segment.previousPos;
                 
-                // Damping uygula
                 velocity *= (1f - damping);
                 
-                // Hız sınırla (ışınlanma önleme)
                 float maxVelocity = 2f;
                 if (velocity.magnitude > maxVelocity)
                 {
                     velocity = velocity.normalized * maxVelocity;
                 }
                 
-                // Yerçekimi uygula
                 Vector3 newPos = segment.currentPos + velocity;
                 newPos.y -= gravity * deltaTime * deltaTime;
                 
@@ -264,7 +275,7 @@ namespace Sisifos.Interaction
             lastSegment.previousPos = end;
             connection.segments[connection.segments.Count - 1] = lastSegment;
             
-            // Constraint çözümü - yumuşatılmış uzunluk kullan
+            // Constraint çözümü
             float segmentLength = connection.currentRopeLength / segmentsPerConnection;
             
             for (int iteration = 0; iteration < constraintIterations; iteration++)
@@ -275,12 +286,10 @@ namespace Sisifos.Interaction
 
         private void ApplyConstraints(RopeConnection connection, float segmentLength, Vector3 start, Vector3 end)
         {
-            // Başlangıç noktasını sabitle
             RopeSegment first = connection.segments[0];
             first.currentPos = start;
             connection.segments[0] = first;
             
-            // Segment mesafe constraint'leri
             for (int i = 0; i < connection.segments.Count - 1; i++)
             {
                 RopeSegment segA = connection.segments[i];
@@ -294,7 +303,6 @@ namespace Sisifos.Interaction
                 {
                     Vector3 correction = delta.normalized * error;
                     
-                    // Düzeltme miktarını sınırla (ışınlanma önleme)
                     float maxCorrection = 0.5f;
                     if (correction.magnitude > maxCorrection)
                     {
@@ -320,72 +328,66 @@ namespace Sisifos.Interaction
                 }
             }
             
-            // Bitiş noktasını sabitle
             RopeSegment last = connection.segments[connection.segments.Count - 1];
             last.currentPos = end;
             connection.segments[connection.segments.Count - 1] = last;
         }
 
-        private void DrawAllConnections()
+        /// <summary>
+        /// Tek bir bağlantının LineRenderer'ını günceller
+        /// </summary>
+        private void DrawConnection(RopeConnection connection)
         {
-            _allPoints.Clear();
+            if (connection.lineRenderer == null) return;
             
-            for (int c = 0; c < _connections.Count; c++)
+            int segmentCount = connection.segments.Count;
+            Vector3[] points = new Vector3[segmentCount];
+            
+            int blendSegments = Mathf.Min(3, segmentCount - 1);
+            
+            for (int i = 0; i < segmentCount; i++)
             {
-                RopeConnection connection = _connections[c];
-                int segmentCount = connection.segments.Count;
+                Vector3 point;
                 
-                // İlk bağlantı hariç, ilk noktayı ekleme
-                int startIndex = (c == 0) ? 0 : 1;
-                
-                // Son birkaç segmenti karaktere doğru yönlendir (düzgün açı için)
-                int blendSegments = Mathf.Min(3, segmentCount - 1);
-                
-                for (int i = startIndex; i < segmentCount; i++)
+                if (i == 0)
                 {
-                    Vector3 point;
-                    
-                    if (i == 0)
-                    {
-                        // İlk segment - gerçek başlangıç pozisyonu
-                        point = connection.actualStartPos;
-                    }
-                    else if (i == segmentCount - 1)
-                    {
-                        // Son segment - gerçek kutu pozisyonu
-                        point = connection.actualEndPos;
-                    }
-                    else if (i >= segmentCount - blendSegments - 1)
-                    {
-                        // Son birkaç segment - karaktere doğru yumuşak geçiş
-                        float t = (float)(segmentCount - 1 - i) / blendSegments;
-                        Vector3 simPos = connection.segments[i].currentPos;
-                        
-                        // Kutu ile karakter arasında doğrusal interpolasyon
-                        Vector3 linePos = Vector3.Lerp(connection.actualEndPos, connection.actualStartPos, t / (segmentCount - 1) * blendSegments);
-                        
-                        // Simülasyon pozisyonu ile doğrusal pozisyon arası karıştır
-                        point = Vector3.Lerp(simPos, linePos, 0.3f);
-                    }
-                    else
-                    {
-                        point = connection.segments[i].currentPos;
-                    }
-                    
-                    _allPoints.Add(point);
+                    point = connection.actualStartPos;
                 }
+                else if (i == segmentCount - 1)
+                {
+                    point = connection.actualEndPos;
+                }
+                else if (i >= segmentCount - blendSegments - 1)
+                {
+                    float t = (float)(segmentCount - 1 - i) / blendSegments;
+                    Vector3 simPos = connection.segments[i].currentPos;
+                    Vector3 linePos = Vector3.Lerp(connection.actualEndPos, connection.actualStartPos, t / (segmentCount - 1) * blendSegments);
+                    point = Vector3.Lerp(simPos, linePos, 0.3f);
+                }
+                else
+                {
+                    point = connection.segments[i].currentPos;
+                }
+                
+                points[i] = point;
             }
             
-            _lineRenderer.positionCount = _allPoints.Count;
-            _lineRenderer.SetPositions(_allPoints.ToArray());
+            connection.lineRenderer.positionCount = segmentCount;
+            connection.lineRenderer.SetPositions(points);
         }
 
         /// <summary>
-        /// Halatı gizler
+        /// Tüm halatları gizler ve temizler
         /// </summary>
         public void HideRope()
         {
-            _lineRenderer.positionCount = 0;
+            foreach (var connection in _connections)
+            {
+                if (connection.lineRenderer != null)
+                {
+                    Destroy(connection.lineRenderer.gameObject);
+                }
+            }
             _connections.Clear();
         }
 
@@ -394,14 +396,27 @@ namespace Sisifos.Interaction
             HideRope();
         }
         
+        private void OnDestroy()
+        {
+            HideRope();
+            if (_sharedMaterial != null)
+            {
+                Destroy(_sharedMaterial);
+            }
+        }
+        
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            if (_lineRenderer != null)
+            // Runtime'da LineRenderer ayarlarını güncelle
+            foreach (var connection in _connections)
             {
-                _lineRenderer.startWidth = ropeWidth;
-                _lineRenderer.endWidth = ropeWidth;
-                _lineRenderer.textureScale = textureScale;
+                if (connection.lineRenderer != null)
+                {
+                    connection.lineRenderer.startWidth = ropeWidth;
+                    connection.lineRenderer.endWidth = ropeWidth;
+                    connection.lineRenderer.textureScale = textureScale;
+                }
             }
         }
 #endif

@@ -53,12 +53,24 @@ namespace Sisifos.Interaction
         private Collider _collider;
         private Vector3 _previousTargetPos;
         private float _currentTension; // 0-1 arası gerginlik değeri
+        
+        // Huni dizilimi için yeni alanlar
+        private Vector3 _funnelOffset; // Oyuncuya göre hedef offset (huni pozisyonu)
+        private float _dynamicRopeLength; // Dinamik halat uzunluğu
+        private int _boxIndex; // Kutu indeksi (0 = ilk kutu)
 
         #region Properties
         public bool IsAttached => _isAttached;
         public Vector3 AttachPoint => transform.position + transform.TransformDirection(attachPointOffset);
+        
+        /// <summary>
+        /// Halat uzunluğu - her kutunun kendi Inspector değerini kullanır
+        /// </summary>
         public float RopeLength => ropeLength;
+        
         public float InteractionRange => interactionRange;
+        public int BoxIndex => _boxIndex;
+        
         /// <summary>
         /// Halatın gerginlik değeri (0 = gevşek, 1 = maksimum gergin)
         /// </summary>
@@ -115,13 +127,16 @@ namespace Sisifos.Interaction
         }
 
         /// <summary>
-        /// Kutuyu bir hedefe bağlar
+        /// Kutuyu bir hedefe bağlar (eski zincirleme sistem - geriye uyumluluk)
         /// </summary>
         public void AttachTo(Transform target, DraggableBox previousBox = null)
         {
             _followTarget = target;
             _previousBox = previousBox;
             _isAttached = true;
+            _funnelOffset = Vector3.zero;
+            _dynamicRopeLength = ropeLength;
+            _boxIndex = 0;
             
             // Bağlandığında hızı sıfırla ve wake up
             _rigidbody.linearVelocity = Vector3.zero;
@@ -137,6 +152,33 @@ namespace Sisifos.Interaction
                 Physics.IgnoreCollision(_collider, _previousBox._collider, true);
             }
         }
+        
+        /// <summary>
+        /// Kutuyu oyuncuya doğrudan bağlar - huni dizilimi için
+        /// </summary>
+        /// <param name="playerTransform">Oyuncu transform'u</param>
+        /// <param name="funnelOffset">Huni diziliminde bu kutunun offset'i</param>
+        /// <param name="customRopeLength">Bu kutu için halat uzunluğu</param>
+        /// <param name="boxIndex">Kutu indeksi (0 = ilk kutu)</param>
+        public void AttachToPlayer(Transform playerTransform, Vector3 funnelOffset, float customRopeLength, int boxIndex)
+        {
+            _followTarget = playerTransform;
+            _previousBox = null; // Tüm kutular oyuncuya direkt bağlı
+            _isAttached = true;
+            _funnelOffset = funnelOffset;
+            _dynamicRopeLength = customRopeLength;
+            _boxIndex = boxIndex;
+            
+            // Bağlandığında hızı sıfırla ve wake up
+            _rigidbody.linearVelocity = Vector3.zero;
+            _rigidbody.angularVelocity = Vector3.zero;
+            _rigidbody.WakeUp();
+            
+            // Hedef pozisyonunu kaydet
+            _previousTargetPos = GetTargetAnchor();
+            
+            Debug.Log($"[DraggableBox] Attached to player - Index: {boxIndex}, Offset: {funnelOffset}, RopeLength: {customRopeLength}");
+        }
 
         /// <summary>
         /// Kutuyu serbest bırakır
@@ -146,13 +188,22 @@ namespace Sisifos.Interaction
             _followTarget = null;
             _previousBox = null;
             _isAttached = false;
+            _funnelOffset = Vector3.zero;
+            _dynamicRopeLength = 0f;
+            _boxIndex = 0;
         }
 
+        /// <summary>
+        /// Hedef anchor noktasını hesaplar.
+        /// Tüm kutular oyuncuya doğru çekilir - rotasyondan bağımsız.
+        /// </summary>
         private Vector3 GetTargetAnchor()
         {
-            return _previousBox != null 
-                ? _previousBox.AttachPoint 
-                : _followTarget.position;
+            if (_followTarget == null) return transform.position;
+            
+            // Sadece oyuncu pozisyonunu döndür - rotasyondan bağımsız
+            // Kutular doğal halat gibi arkadan sürüklenecek
+            return _followTarget.position;
         }
 
         private void ApplyPullForce()
@@ -163,27 +214,27 @@ namespace Sisifos.Interaction
             Vector3 toTarget = targetAnchor - AttachPoint;
             float distance = toTarget.magnitude;
 
-            // Gerginlik hesapla (ropeLength'e kadar 0, sonra artar)
-            float excessDistance = Mathf.Max(0, distance - ropeLength);
-            // Normalize et - maksimum 2 birim fazlalık = 1.0 gerginlik
+            // Gerginlik hesapla
+            float currentRopeLength = RopeLength;
+            float excessDistance = Mathf.Max(0, distance - currentRopeLength);
             _currentTension = Mathf.Clamp01(excessDistance / 2f);
 
             // Eğer halat gergin değilse kuvvet uygulama
-            if (distance <= ropeLength + tensionDistance)
+            if (distance <= currentRopeLength + tensionDistance)
             {
                 return;
             }
-
+            
             // Çekme yönü
             Vector3 pullDirection = toTarget.normalized;
             
-            // Kuvvet hesapla - mesafe arttıkça kuvvet artar (yumuşak spring)
-            float forceMagnitude = pullForce * Mathf.Sqrt(excessDistance); // Sqrt ile daha yumuşak
+            // Kuvvet hesapla - yumuşak spring
+            float forceMagnitude = pullForce * Mathf.Sqrt(excessDistance);
 
             // Kuvveti uygula
             _rigidbody.AddForce(pullDirection * forceMagnitude, ForceMode.Force);
 
-            // Hız sınırla
+            // Sadece aşırı hızı sınırla
             if (_rigidbody.linearVelocity.magnitude > maxSpeed)
             {
                 _rigidbody.linearVelocity = _rigidbody.linearVelocity.normalized * maxSpeed;
@@ -192,7 +243,7 @@ namespace Sisifos.Interaction
         
         private void ApplyVelocityDamping()
         {
-            // Ani hareketleri yumuşat
+            // Hafif damping - titreme önlemek için çok düşük tut
             _rigidbody.linearVelocity *= velocityDamping;
         }
 
