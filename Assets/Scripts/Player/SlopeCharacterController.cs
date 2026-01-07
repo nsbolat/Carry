@@ -79,6 +79,11 @@ namespace Sisifos.Player
         private float _speedMultiplier = 1f;
         private float _ropeTension = 0f; // 0-1 arası halat gerginliği
 
+        // Life stage modifiers
+        private float _lifeStageSpeedMultiplier = 1f;
+        private float _lifeStageJumpMultiplier = 1f;
+        private float _lifeStageAccelerationMultiplier = 1f;
+
         #region Properties
         public bool IsGrounded => _isGrounded;
         public bool IsRunning => _isRunning;
@@ -153,6 +158,27 @@ namespace Sisifos.Player
         public void SetRopeTension(float tension)
         {
             _ropeTension = Mathf.Clamp01(tension);
+        }
+
+        /// <summary>
+        /// Animator referansını değiştirir (karakter modeli değiştiğinde)
+        /// </summary>
+        public void SetAnimator(Animator newAnimator)
+        {
+            animator = newAnimator;
+            _animatorInitialized = false; // Yeni animator için hash'leri yeniden hesapla
+        }
+
+        /// <summary>
+        /// Yaşam dönemi modifierlarını uygular
+        /// </summary>
+        public void ApplyLifeStageModifiers(float speedMultiplier, float jumpMultiplier, float accelerationMultiplier)
+        {
+            _lifeStageSpeedMultiplier = speedMultiplier;
+            _lifeStageJumpMultiplier = jumpMultiplier;
+            _lifeStageAccelerationMultiplier = accelerationMultiplier;
+            
+            Debug.Log($"[SlopeCharacter] Applied life stage modifiers: Speed={_lifeStageSpeedMultiplier}, Jump={_lifeStageJumpMultiplier}, Accel={_lifeStageAccelerationMultiplier}");
         }
         #endregion
 
@@ -295,11 +321,13 @@ namespace Sisifos.Player
             float tensionMultiplier = 1f - (_ropeTension * maxTensionEffect);
             
             _targetSpeed = Mathf.Abs(horizontal) > 0.1f 
-                ? baseSpeed * _speedMultiplier * tensionMultiplier
+                ? baseSpeed * _speedMultiplier * tensionMultiplier * _lifeStageSpeedMultiplier
                 : 0f;
 
-            // Smooth hız geçişi
-            float accelerationRate = _targetSpeed > _currentSpeed ? acceleration : deceleration;
+            // Smooth hız geçişi (yaşam dönemi çarpanı ile)
+            float accelerationRate = _targetSpeed > _currentSpeed 
+                ? acceleration * _lifeStageAccelerationMultiplier 
+                : deceleration;
             _currentSpeed = Mathf.MoveTowards(_currentSpeed, _targetSpeed, accelerationRate * Time.deltaTime);
 
             // Hareket yönü - input varsa güncelle, yoksa son yönü kullan
@@ -341,7 +369,7 @@ namespace Sisifos.Player
             {
                 if (_isGrounded)
                 {
-                    _velocity.y = jumpForce;
+                    _velocity.y = jumpForce * _lifeStageJumpMultiplier;
                     _isJumping = true;
                     
                     if (animator != null)
@@ -389,15 +417,60 @@ namespace Sisifos.Player
         #endregion
 
         #region Animation
-        private void UpdateAnimator()
+        // Animator parameter hash cache
+        private int _speedHash = -1;
+        private int _groundedHash = -1;
+        private int _jumpHash = -1;
+        private bool _animatorInitialized = false;
+
+        private void InitializeAnimatorHashes()
         {
             if (animator == null) return;
+            
+            _speedHash = Animator.StringToHash(speedParameter);
+            _groundedHash = Animator.StringToHash(groundedParameter);
+            _jumpHash = Animator.StringToHash(jumpParameter);
+            _animatorInitialized = true;
+        }
+
+        private void UpdateAnimator()
+        {
+            // Animator veya Controller yoksa çık
+            if (animator == null || animator.runtimeAnimatorController == null) return;
+
+            // İlk seferde hash'leri hesapla
+            if (!_animatorInitialized)
+            {
+                InitializeAnimatorHashes();
+            }
 
             // Animasyon hızı sadece karakterin gerçek hızına bağlı
-            // _currentSpeed zaten kutu taşırken yavaşlıyor (speedMultiplier etkisi)
             float normalizedSpeed = _currentSpeed / runSpeed;
-            animator.SetFloat(speedParameter, normalizedSpeed);
-            animator.SetBool(groundedParameter, _isGrounded);
+            
+            // Parametreleri güvenli şekilde ayarla
+            if (HasParameter(animator, _speedHash))
+            {
+                animator.SetFloat(_speedHash, normalizedSpeed);
+            }
+            
+            if (HasParameter(animator, _groundedHash))
+            {
+                animator.SetBool(_groundedHash, _isGrounded);
+            }
+        }
+
+        /// <summary>
+        /// Animator'da parametre var mı kontrol eder
+        /// </summary>
+        private bool HasParameter(Animator anim, int hash)
+        {
+            if (anim == null) return false;
+            
+            foreach (AnimatorControllerParameter param in anim.parameters)
+            {
+                if (param.nameHash == hash) return true;
+            }
+            return false;
         }
         #endregion
 

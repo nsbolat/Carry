@@ -39,6 +39,9 @@ namespace Sisifos.Interaction
         
         // Karakter kontrolcüsü referansı (ağırlık sistemi için)
         private SlopeCharacterController _characterController;
+        
+        // Karakter evrim yöneticisi referansı
+        private CharacterEvolutionManager _evolutionManager;
 
         #region Properties
         public int AttachedBoxCount => _attachedBoxes.Count;
@@ -62,11 +65,21 @@ namespace Sisifos.Interaction
                 return transform.position + transform.TransformDirection(attachPointOffset);
             }
         }
+
+        /// <summary>
+        /// Rope attach bone'u değiştirir (karakter modeli değiştiğinde)
+        /// </summary>
+        public void SetRopeAttachBone(Transform newBone)
+        {
+            ropeAttachBone = newBone;
+            Debug.Log($"[BoxCarrier] Rope attach bone updated to: {(newBone != null ? newBone.name : "null")}");
+        }
         #endregion
 
         private void Awake()
         {
             _characterController = GetComponent<SlopeCharacterController>();
+            _evolutionManager = GetComponent<CharacterEvolutionManager>();
         }
 
         private void Update()
@@ -138,11 +151,18 @@ namespace Sisifos.Interaction
 
             _attachedBoxes.Add(box);
             
+            // Karakter evrimini tetikle
+            if (_evolutionManager != null)
+            {
+                _evolutionManager.AdvanceToNextStage();
+            }
+            
             // Ağırlık güncelle
             UpdateCarriedWeight();
             
             Debug.Log($"Box attached! Total: {_attachedBoxes.Count}");
         }
+
 
         /// <summary>
         /// Son bağlı kutuyu çözer
