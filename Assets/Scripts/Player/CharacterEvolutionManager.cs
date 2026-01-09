@@ -171,7 +171,7 @@ namespace Sisifos.Player
         }
 
         /// <summary>
-        /// Fade efekti ile karakter geçişi
+        /// Karakter geçişi - anında, fade olmadan
         /// </summary>
         private IEnumerator TransitionToStage(int targetStageIndex)
         {
@@ -182,31 +182,10 @@ namespace Sisifos.Player
             
             Debug.Log($"[CharacterEvolution] Transitioning from {lifeStages[_currentStageIndex].stageName} to {targetStage.stageName}");
 
-            // Fade Out
-            if (fadeImage != null)
-            {
-                yield return StartCoroutine(Fade(0f, 1f, transitionDuration * 0.5f));
-            }
-            else
-            {
-                // Fade image yoksa kısa bir bekleme
-                yield return new WaitForSeconds(transitionDuration * 0.25f);
-            }
-
-            // Karakter değiştir
+            // Karakter değiştir - anında, fade olmadan
             DeactivateCurrentStage();
             _currentStageIndex = targetStageIndex;
             ActivateStage(targetStage);
-
-            // Fade In
-            if (fadeImage != null)
-            {
-                yield return StartCoroutine(Fade(1f, 0f, transitionDuration * 0.5f));
-            }
-            else
-            {
-                yield return new WaitForSeconds(transitionDuration * 0.25f);
-            }
 
             _isTransitioning = false;
 
@@ -215,6 +194,8 @@ namespace Sisifos.Player
             OnStageIndexChanged?.Invoke(oldIndex, targetStageIndex);
             
             Debug.Log($"[CharacterEvolution] Transition complete! Now at: {targetStage.stageName}");
+            
+            yield break;
         }
 
         /// <summary>

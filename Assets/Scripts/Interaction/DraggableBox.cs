@@ -44,6 +44,9 @@ namespace Sisifos.Interaction
         [Header("Interaction")]
         [Tooltip("Oyuncunun kutuyu bağlayabilmesi için maksimum mesafe")]
         [SerializeField] private float interactionRange = 2f;
+        
+        [Tooltip("Etkileşim noktası offset - kutunun hangi noktasına yaklaşınca bağlanacağını ayarlar")]
+        [SerializeField] private Vector3 interactionOffset = Vector3.zero;
 
         // State
         private bool _isAttached;
@@ -69,6 +72,12 @@ namespace Sisifos.Interaction
         public float RopeLength => ropeLength;
         
         public float InteractionRange => interactionRange;
+        
+        /// <summary>
+        /// Etkileşim noktası - offset uygulanmış pozisyon
+        /// </summary>
+        public Vector3 InteractionPoint => transform.position + interactionOffset;
+        
         public int BoxIndex => _boxIndex;
         
         /// <summary>
@@ -253,9 +262,13 @@ namespace Sisifos.Interaction
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(AttachPoint, 0.1f);
 
-            // Interaction range göster
+            // Interaction point ve range göster (offset uygulanmış)
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(transform.position, interactionRange);
+            Gizmos.DrawWireSphere(InteractionPoint, interactionRange);
+            
+            // Interaction point'i işaretle
+            Gizmos.color = Color.magenta;
+            Gizmos.DrawSphere(InteractionPoint, 0.15f);
 
             // Rope length göster
             Gizmos.color = Color.green;

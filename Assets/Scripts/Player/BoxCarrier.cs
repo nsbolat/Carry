@@ -105,6 +105,13 @@ namespace Sisifos.Interaction
         private void Update()
         {
             UpdateNearestBox();
+            
+            // Otomatik kutu bağlama - yakındaki kutuyu bul ve bağla
+            if (_nearestBox != null && !_nearestBox.IsAttached && CanAttachMore)
+            {
+                AttachBox(_nearestBox);
+            }
+            
             UpdateRopeVisual();
             UpdateTensionFeedback();
         }
@@ -313,7 +320,8 @@ namespace Sisifos.Interaction
                 
                 if (box == null || box.IsAttached) continue;
 
-                float distance = Vector3.Distance(transform.position, box.transform.position);
+                // Etkileşim noktasına olan mesafe (offset uygulanmış)
+                float distance = Vector3.Distance(transform.position, box.InteractionPoint);
                 
                 // Etkileşim mesafesi kontrolü
                 if (distance <= box.InteractionRange && distance < nearestDistance)

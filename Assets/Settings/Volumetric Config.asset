@@ -33,7 +33,7 @@ MonoBehaviour:
   enableDirectionalLight: 1
   enablePointAndSpotLight: 1
   albedo: {r: 1, g: 1, b: 1, a: 1}
-  directionalScatteringIntensity: 1.15
+  directionalScatteringIntensity: 1.25
   localScatteringIntensity: 100
   anisotropy: 0.05
   depthExtent: 64
