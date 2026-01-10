@@ -44,6 +44,9 @@ namespace Sisifos.Player
         [Tooltip("Geçiş süresi (saniye)")]
         [SerializeField] private float transitionDuration = 0.5f;
         
+        [Tooltip("Beşik düşene kadar bekle - CradleController tarafından aktif edilecek")]
+        [SerializeField] private bool waitForCradleFall = true;
+        
         [Tooltip("Fade için UI Image (opsiyonel - Canvas'ta olmalı)")]
         [SerializeField] private Image fadeImage;
         
@@ -60,6 +63,7 @@ namespace Sisifos.Player
         // State
         private int _currentStageIndex = 0;
         private bool _isTransitioning = false;
+        private bool _isInitialized = false;
         private GameObject _currentCharacterModel;
         private Animator _currentAnimator;
 
@@ -89,15 +93,42 @@ namespace Sisifos.Player
 
         private void Start()
         {
-            // İlk yaşam dönemini aktifle
-            InitializeFirstStage();
+            if (waitForCradleFall)
+            {
+                // Beşik düşene kadar tüm modelleri gizle
+                HideAllStages();
+                Debug.Log("[CharacterEvolution] waitForCradleFall aktif - Beşik düşene kadar bekleniyor");
+            }
+            else
+            {
+                // Normal başlangıç
+                InitializeFirstStage();
+            }
         }
 
         /// <summary>
-        /// İlk yaşam dönemini ayarlar
+        /// Tüm stage'leri gizler (beşik düşmeden önce)
         /// </summary>
-        private void InitializeFirstStage()
+        private void HideAllStages()
         {
+            if (lifeStages == null) return;
+            
+            foreach (var stage in lifeStages)
+            {
+                if (stage != null && stage.characterModel != null)
+                {
+                    stage.characterModel.SetActive(false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// İlk yaşam dönemini ayarlar - dışarıdan çağrılabilir (CradleController için)
+        /// </summary>
+        public void InitializeFirstStage()
+        {
+            if (_isInitialized) return;
+            
             if (lifeStages == null || lifeStages.Length == 0)
             {
                 Debug.LogWarning("[CharacterEvolution] No life stages defined!");
@@ -116,8 +147,7 @@ namespace Sisifos.Player
             // İlk dönemi aktifle
             _currentStageIndex = 0;
             ActivateStage(lifeStages[0]);
-            
-            Debug.Log($"[CharacterEvolution] Initialized with stage: {lifeStages[0].stageName}");
+            _isInitialized = true;
         }
 
         /// <summary>
@@ -223,6 +253,13 @@ namespace Sisifos.Player
             // Modeli aktifle
             stage.characterModel.SetActive(true);
             _currentCharacterModel = stage.characterModel;
+            
+            // TÜM RENDERER'LARI AÇ (CradleController gizlemiş olabilir)
+            Renderer[] renderers = stage.characterModel.GetComponentsInChildren<Renderer>();
+            foreach (var renderer in renderers)
+            {
+                renderer.enabled = true;
+            }
 
             // Animator'ü güncelle - sahnedeki modelden al
             _currentAnimator = stage.characterModel.GetComponentInChildren<Animator>();
@@ -230,10 +267,6 @@ namespace Sisifos.Player
             if (_currentAnimator == null)
             {
                 Debug.LogWarning($"[CharacterEvolution] No Animator found on {stage.characterModel.name}!");
-            }
-            else
-            {
-                Debug.Log($"[CharacterEvolution] Found Animator on {_currentAnimator.gameObject.name}");
             }
             
             // SlopeCharacterController'a animator ver ve modifierleri uygula

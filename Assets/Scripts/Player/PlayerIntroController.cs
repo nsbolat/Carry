@@ -1,36 +1,31 @@
 using UnityEngine;
 using System;
-using System.Collections;
+using Sisifos.Interaction;
 
 namespace Sisifos.Player
 {
     /// <summary>
-    /// Oyun başlangıcında karakterin sahneye giriş animasyonunu yönetir.
-    /// Karakter sol taraftan ekrana yürüyerek girer.
+    /// Oyun başlangıcında beşik mekaniğini yönetir.
+    /// Karakter beşikte başlar, A-D tuşlarıyla beşik sallanır ve düşer.
     /// </summary>
     public class PlayerIntroController : MonoBehaviour
     {
-        [Header("Intro Settings")]
-        [Tooltip("Karakterin başlangıç pozisyonu (ekran dışı, sol taraf)")]
-        [SerializeField] private Vector3 startOffset = new Vector3(-15f, 0f, 0f);
+        [Header("Cradle Settings")]
+        [Tooltip("Beşik kontrolcüsü")]
+        [SerializeField] private CradleController cradleController;
         
-        [Tooltip("Karakterin hedef pozisyonu (sahne merkezi)")]
-        [SerializeField] private Vector3 targetPosition = Vector3.zero;
-
-        [Header("Movement")]
-        [Tooltip("Yürüme hızı - SlopeCharacterController ile aynı olmalı")]
-        [SerializeField] private float walkSpeed = 5f;
-        
-        [Tooltip("Yavaşlama mesafesi (hedefe yaklaşırken)")]
-        [SerializeField] private float decelerationDistance = 2f;
-
-        [Header("Camera Switch")]
-        [Tooltip("Kamera geçişinin başlayacağı mesafe (hedefe kalan)")]
-        [SerializeField] private float cameraSwitchDistance = 5f;
+        [Tooltip("Beşikten düştükten sonra karakterin spawn pozisyonu offset'i")]
+        [SerializeField] private Vector3 spawnOffset = new Vector3(1f, 0f, 0f);
 
         [Header("References")]
         [SerializeField] private SlopeCharacterController characterController;
+        [SerializeField] private PlayerInputHandler inputHandler;
         [SerializeField] private Animator animator;
+
+        [Header("Legacy - Backward Compatibility")]
+        [Tooltip("Eski intro sistemi için (artık kullanılmıyor)")]
+        [SerializeField] private Vector3 startOffset = new Vector3(-15f, 0f, 0f);
+        [SerializeField] private Vector3 targetPosition = Vector3.zero;
 
         // Events
         public event Action OnIntroComplete;
@@ -41,26 +36,19 @@ namespace Sisifos.Player
         private bool _introPlaying;
         private bool _introCompleted;
         private bool _cameraSwitchTriggered;
-        private float _currentSpeed;
-
-        // Animator parameter hashes
-        private static readonly int SpeedHash = Animator.StringToHash("Speed");
-        private static readonly int IsGroundedHash = Animator.StringToHash("IsGrounded");
 
         private void Awake()
         {
             if (characterController == null)
                 characterController = GetComponent<SlopeCharacterController>();
 
+            if (inputHandler == null)
+                inputHandler = GetComponent<PlayerInputHandler>();
+
             if (animator == null)
                 animator = GetComponentInChildren<Animator>();
 
             _originalPosition = transform.position;
-            
-            if (characterController != null)
-            {
-                walkSpeed = characterController.WalkSpeed;
-            }
         }
 
         private void Start()
@@ -70,174 +58,195 @@ namespace Sisifos.Player
             {
                 InitializeForMenu();
             }
+
+            // Beşik event'lerine abone ol
+            if (cradleController != null)
+            {
+                cradleController.OnCradleFallen += HandleCradleFallen;
+                cradleController.OnCharacterExitComplete += HandleCharacterExitComplete;
+            }
         }
 
+        private void OnDestroy()
+        {
+            if (cradleController != null)
+            {
+                cradleController.OnCradleFallen -= HandleCradleFallen;
+                cradleController.OnCharacterExitComplete -= HandleCharacterExitComplete;
+            }
+        }
+
+        /// <summary>
+        /// Menü durumu için başlangıç ayarları.
+        /// </summary>
         public void InitializeForMenu()
         {
-            transform.position = _originalPosition + startOffset;
-            _currentSpeed = 0f;
             _cameraSwitchTriggered = false;
-            
+            _introCompleted = false;
+            _introPlaying = false;
+
+            // Karakteri beşiğe yerleştir (beşik varsa)
+            if (cradleController != null)
+            {
+                // Karakter beşik içinde olmalı - Unity Editor'da parent olarak ayarlanmalı
+                cradleController.ResetCradle();
+            }
+
+            // Karakter kontrolcüsünü devre dışı bırak
             if (characterController != null)
             {
                 characterController.SetMoveInput(Vector2.zero);
             }
-            
-            transform.rotation = Quaternion.Euler(0, 90, 0);
         }
 
+        /// <summary>
+        /// Intro'yu başlatır - beşik modunu aktif eder.
+        /// </summary>
         public void StartIntro()
         {
             if (_introPlaying || _introCompleted) return;
-            StartCoroutine(PlayIntroCoroutine());
-        }
-
-        private IEnumerator PlayIntroCoroutine()
-        {
+            
             _introPlaying = true;
             _cameraSwitchTriggered = false;
 
-            Vector3 endPos = _originalPosition + targetPosition;
-            
-            if (animator != null)
+            Debug.Log("[PlayerIntroController] Intro başlatıldı - Beşik modu (kamera henüz değişmedi)");
+
+            // NOT: Kamera geçişi burada yapılmıyor!
+            // Karakter yere düştüğünde (HandleCradleFallen) kamera geçecek
+
+            // Beşik varsa sallanmayı aktif et
+            if (cradleController != null)
             {
-                animator.SetBool(IsGroundedHash, true);
+                cradleController.EnableRocking();
+                
+                // Input handler'a beşik modunu bildir
+                if (inputHandler != null)
+                {
+                    inputHandler.SetCradleMode(cradleController);
+                }
             }
-
-            while (true)
+            else
             {
-                float remainingDistance = Mathf.Abs(transform.position.x - endPos.x);
-                
-                // Kamera geçiş noktası
-                if (!_cameraSwitchTriggered && remainingDistance <= cameraSwitchDistance)
-                {
-                    _cameraSwitchTriggered = true;
-                    OnCameraSwitchPoint?.Invoke();
-                }
-                
-                // Hedefe vardık mı?
-                if (remainingDistance < 0.05f)
-                {
-                    break;
-                }
-
-                // Hedefe yaklaşırken smooth yavaşla (ease-out curve)
-                float targetSpeed = walkSpeed;
-                if (remainingDistance < decelerationDistance)
-                {
-                    // Ease-out quadratic curve for smoother stop
-                    float t = remainingDistance / decelerationDistance;
-                    t = t * t; // Quadratic ease-out (daha yumuşak durma)
-                    targetSpeed = Mathf.Lerp(0.1f, walkSpeed, t);
-                }
-
-                // Daha yumuşak hız geçişi
-                float acceleration = remainingDistance < 1f ? walkSpeed * 1.5f : walkSpeed * 3f;
-                _currentSpeed = Mathf.MoveTowards(_currentSpeed, targetSpeed, acceleration * Time.deltaTime);
-
-                float dirX = endPos.x > transform.position.x ? 1f : -1f;
-                
-                Vector3 newPos = transform.position;
-                newPos.x += dirX * _currentSpeed * Time.deltaTime;
-                transform.position = newPos;
-
-                if (animator != null)
-                {
-                    float runSpeed = characterController != null ? characterController.RunSpeed : walkSpeed * 2f;
-                    float normalizedSpeed = _currentSpeed / runSpeed;
-                    animator.SetFloat(SpeedHash, normalizedSpeed);
-                }
-
-                yield return null;
+                Debug.LogWarning("[PlayerIntroController] CradleController atanmamış! Intro atlaniyor...");
+                // Beşik yoksa direkt tamamla
+                CompleteIntro();
             }
+        }
 
-            // Final pozisyonu ayarla
-            Vector3 finalPos = transform.position;
-            finalPos.x = endPos.x;
-            transform.position = finalPos;
+        /// <summary>
+        /// Beşik düştüğünde çağrılır - kamera geçişi ve input'u devre dışı tut
+        /// </summary>
+        private void HandleCradleFallen()
+        {
+            Debug.Log("[PlayerIntroController] Beşik düştü - Kamera geçişi ve animasyon!");
             
-            // Animasyonu smooth olarak sıfırla
-            if (animator != null)
+            // KAMERA GEÇİŞİ - karakter yere düştüğünde
+            if (!_cameraSwitchTriggered)
             {
-                float currentAnimSpeed = animator.GetFloat(SpeedHash);
-                float fadeTime = 0.3f;
-                float elapsed = 0f;
-                
-                while (elapsed < fadeTime)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = elapsed / fadeTime;
-                    animator.SetFloat(SpeedHash, Mathf.Lerp(currentAnimSpeed, 0f, t));
-                    yield return null;
-                }
-                
-                animator.SetFloat(SpeedHash, 0f);
+                _cameraSwitchTriggered = true;
+                OnCameraSwitchPoint?.Invoke();
             }
             
-            _currentSpeed = 0f;
+            // Beşik modundan çık
+            if (inputHandler != null)
+            {
+                inputHandler.ExitCradleMode();
+                // Input'u KAPALI tut - timer bitene kadar hareket edemez
+                inputHandler.DisableInput();
+            }
+            
+            // NOT: CompleteIntro() burada çağrılmıyor!
+            // Timer bitene kadar bekliyoruz
+        }
 
+        /// <summary>
+        /// Timer tamamlandığında çağrılır - controller aktif olur
+        /// </summary>
+        private void HandleCharacterExitComplete()
+        {
+            Debug.Log("[PlayerIntroController] Timer bitti - Controller AKTİF!");
+            
+            // Input'u aktif et
+            if (inputHandler != null)
+            {
+                inputHandler.EnableInput();
+            }
+            
+            CompleteIntro();
+        }
+
+        /// <summary>
+        /// Intro'yu tamamlar ve gameplay'e geçer.
+        /// </summary>
+        private void CompleteIntro()
+        {
             _introPlaying = false;
             _introCompleted = true;
 
             OnIntroComplete?.Invoke();
+            Debug.Log("[PlayerIntroController] Intro tamamlandı - Gameplay başlıyor!");
         }
 
+        /// <summary>
+        /// Intro'yu atlar.
+        /// </summary>
         public void SkipIntro()
         {
             if (!_introPlaying) return;
 
-            StopAllCoroutines();
-
-            transform.position = _originalPosition + targetPosition;
-            _currentSpeed = 0f;
-            
-            if (animator != null)
+            // Beşiği zorla devir
+            if (cradleController != null)
             {
-                animator.SetFloat(SpeedHash, 0f);
+                // CradleController'da bir SkipFall methodu eklenebilir
+                // Şimdilik direkt complete
             }
 
-            _introPlaying = false;
-            _introCompleted = true;
+            if (inputHandler != null)
+            {
+                inputHandler.ExitCradleMode();
+            }
 
             if (!_cameraSwitchTriggered)
             {
+                _cameraSwitchTriggered = true;
                 OnCameraSwitchPoint?.Invoke();
             }
-            OnIntroComplete?.Invoke();
+
+            CompleteIntro();
         }
 
+        /// <summary>
+        /// Intro'yu sıfırlar.
+        /// </summary>
         public void ResetIntro()
         {
-            StopAllCoroutines();
             _introPlaying = false;
             _introCompleted = false;
             _cameraSwitchTriggered = false;
-            _currentSpeed = 0f;
+            
+            if (cradleController != null)
+            {
+                cradleController.ResetCradle();
+            }
+
+            if (inputHandler != null)
+            {
+                inputHandler.ExitCradleMode();
+            }
+
             InitializeForMenu();
         }
 
+        #region Debug
         private void OnDrawGizmosSelected()
         {
-            Vector3 startPos = (Application.isPlaying ? _originalPosition : transform.position) + startOffset;
-            Vector3 endPos = (Application.isPlaying ? _originalPosition : transform.position) + targetPosition;
+            Vector3 basePos = Application.isPlaying ? _originalPosition : transform.position;
             
-            // Start position
-            Gizmos.color = Color.red;
-            Gizmos.DrawWireSphere(startPos, 0.5f);
-            
-            // End position
+            // Spawn offset'i göster
             Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(endPos, 0.5f);
-            
-            // Camera switch zone
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(new Vector3(endPos.x - cameraSwitchDistance, endPos.y, endPos.z), 0.3f);
-            
-            // Deceleration zone
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(endPos, decelerationDistance);
-
-            Gizmos.DrawLine(startPos, endPos);
+            Gizmos.DrawWireSphere(basePos + spawnOffset, 0.3f);
+            Gizmos.DrawLine(basePos, basePos + spawnOffset);
         }
+        #endregion
     }
 }

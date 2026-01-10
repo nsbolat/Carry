@@ -31,10 +31,15 @@ namespace Sisifos.Camera
         [SerializeField] private Unity.Cinemachine.CinemachineCamera overrideCamera;
         [SerializeField] private int cameraPriority = 15;
 
+        [Header("Debug")]
+        [SerializeField] private bool livePreview = true;
+
         // State
         private bool _hasTriggered = false;
+        private bool _isPlayerInside = false;
         private DynamicCameraController _cameraController;
         private int _originalPriority;
+        private CameraPreset _lastPreset;
 
         private void Start()
         {
@@ -50,6 +55,37 @@ namespace Sisifos.Camera
                 _originalPriority = overrideCamera.Priority.Value;
                 overrideCamera.Priority = 0; // Başlangıçta devre dışı
             }
+
+            _lastPreset = cameraPreset;
+        }
+
+        private void Update()
+        {
+            // Live preview: Inspector'dan değişiklik yapılınca anlık güncelle
+            if (livePreview && _isPlayerInside && overrideCamera == null && _cameraController != null)
+            {
+                // Preset değişti mi kontrol et
+                if (!PresetEquals(_lastPreset, cameraPreset))
+                {
+                    _lastPreset = cameraPreset;
+                    _cameraController.SetCameraPreset(cameraPreset, 0.3f); // Hızlı geçiş
+                }
+            }
+        }
+
+        private bool PresetEquals(CameraPreset a, CameraPreset b)
+        {
+            return Mathf.Approximately(a.distance, b.distance) &&
+                   Mathf.Approximately(a.height, b.height) &&
+                   Mathf.Approximately(a.fieldOfView, b.fieldOfView) &&
+                   Mathf.Approximately(a.lookIntensity, b.lookIntensity) &&
+                   Mathf.Approximately(a.maxVerticalAngle, b.maxVerticalAngle) &&
+                   Mathf.Approximately(a.lookAheadDistance, b.lookAheadDistance) &&
+                   Mathf.Approximately(a.verticalLookAhead, b.verticalLookAhead) &&
+                   Mathf.Approximately(a.followSmoothTime, b.followSmoothTime) &&
+                   Mathf.Approximately(a.verticalSmoothTime, b.verticalSmoothTime) &&
+                   a.offset == b.offset &&
+                   a.rotationOffset == b.rotationOffset;
         }
 
         private void OnTriggerEnter(Collider other)
@@ -58,12 +94,16 @@ namespace Sisifos.Camera
             if (isOneShot && _hasTriggered) return;
 
             _hasTriggered = true;
+            _isPlayerInside = true;
             OnPlayerEnterZone();
         }
 
         private void OnTriggerExit(Collider other)
         {
             if (!other.CompareTag("Player")) return;
+            
+            _isPlayerInside = false;
+            
             if (!returnToDefaultOnExit) return;
 
             OnPlayerExitZone();

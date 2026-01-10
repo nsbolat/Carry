@@ -94,19 +94,14 @@ namespace Sisifos.UI
 
         private void OnUIFadeComplete()
         {
-            StartCoroutine(StartIntroAfterDelay());
-        }
-
-        private System.Collections.IEnumerator StartIntroAfterDelay()
-        {
-            yield return new WaitForSeconds(delayBeforeIntro);
-
+            // Beşik intro'sunu başlat (artık yürüme yok)
             if (playerIntro != null)
             {
                 playerIntro.StartIntro();
             }
             else
             {
+                // PlayerIntro yoksa direkt gameplay'e geç
                 HandleCameraSwitchPoint();
                 HandleIntroComplete();
             }

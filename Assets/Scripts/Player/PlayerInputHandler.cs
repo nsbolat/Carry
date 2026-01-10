@@ -33,6 +33,10 @@ namespace Sisifos.Player
         private InputAction _interactAction;
         
         private bool _inputEnabled = true;
+        
+        // Cradle mode
+        private CradleController _cradleController;
+        private bool _isCradleMode = false;
 
         private void Awake()
         {
@@ -139,17 +143,28 @@ namespace Sisifos.Player
 
         private void Update()
         {
-            if (_moveAction == null || _characterController == null) return;
+            if (_moveAction == null) return;
             
             // Input devre dışıysa hareket verme
             if (!_inputEnabled)
             {
-                _characterController.SetMoveInput(Vector2.zero);
+                if (_characterController != null)
+                    _characterController.SetMoveInput(Vector2.zero);
                 return;
             }
             
             Vector2 moveInput = _moveAction.ReadValue<Vector2>();
-            _characterController.SetMoveInput(moveInput);
+            
+            // Beşik modundaysa input'u beşiğe yönlendir
+            if (_isCradleMode && _cradleController != null)
+            {
+                _cradleController.SetRockingInput(moveInput.x);
+                return;
+            }
+            
+            // Normal hareket modu
+            if (_characterController != null)
+                _characterController.SetMoveInput(moveInput);
         }
 
         #region Public Methods
@@ -183,6 +198,32 @@ namespace Sisifos.Player
         /// Input'un aktif olup olmadığını döndürür.
         /// </summary>
         public bool IsInputEnabled => _inputEnabled;
+
+        /// <summary>
+        /// Beşik modunu aktif eder. Input beşiğe yönlendirilir.
+        /// </summary>
+        public void SetCradleMode(CradleController cradle)
+        {
+            _cradleController = cradle;
+            _isCradleMode = true;
+            _inputEnabled = true; // Beşik modunda input aktif olmalı
+            Debug.Log("[PlayerInputHandler] Cradle mode enabled - A/D ile beşiği sallayın");
+        }
+
+        /// <summary>
+        /// Beşik modundan çıkar. Input karakter kontrolcüsüne yönlendirilir.
+        /// </summary>
+        public void ExitCradleMode()
+        {
+            _isCradleMode = false;
+            _cradleController = null;
+            Debug.Log("[PlayerInputHandler] Cradle mode disabled - Normal hareket aktif");
+        }
+
+        /// <summary>
+        /// Beşik modunda olup olmadığını döndürür.
+        /// </summary>
+        public bool IsCradleMode => _isCradleMode;
         #endregion
 
         #region Input Callbacks

@@ -86,6 +86,21 @@ namespace Sisifos.Camera
         private bool _firstFrame = true;
         private bool _isMenuMode = false;
         private Coroutine _menuTransitionCoroutine;
+        private Coroutine _presetTransitionCoroutine;
+        private bool _isInZonePreset = false; // Zone preset aktifken dinamik güncellemeleri durdur
+
+        // Varsayılan değerleri sakla (zone'dan çıkınca geri dönmek için)
+        private float _defaultDistance;
+        private float _defaultHeight;
+        private Vector3 _defaultOffset;
+        private float _defaultFOV;
+        private float _defaultLookIntensity;
+        private Vector3 _defaultRotationOffset;
+        private float _defaultMaxVerticalAngle;
+        private float _defaultLookAheadDistance;
+        private float _defaultVerticalLookAhead;
+        private float _defaultFollowSmoothTime;
+        private float _defaultVerticalSmoothTime;
 
         private void Awake()
         {
@@ -143,6 +158,19 @@ namespace Sisifos.Camera
             _currentFOV = idleFOV;
             if (virtualCamera != null) virtualCamera.Lens.FieldOfView = _currentFOV;
 
+            // Varsayılan değerleri sakla
+            _defaultDistance = idleDistance;
+            _defaultHeight = cameraHeight;
+            _defaultOffset = cameraOffset;
+            _defaultFOV = idleFOV;
+            _defaultLookIntensity = lookIntensity;
+            _defaultRotationOffset = rotationOffset;
+            _defaultMaxVerticalAngle = maxVerticalAngle;
+            _defaultLookAheadDistance = lookAheadDistance;
+            _defaultVerticalLookAhead = verticalLookAhead;
+            _defaultFollowSmoothTime = followSmoothTime;
+            _defaultVerticalSmoothTime = verticalSmoothTime;
+
             // Rotasyon başlangıç değerlerini hesapla ve ayarla
             if (player != null)
             {
@@ -182,7 +210,7 @@ namespace Sisifos.Camera
                 SnapRotationToTarget();
             }
 
-            // Menü modunda dinamik güncellemeleri atla
+            // Menü modunda veya zone preset'inde dinamik güncellemeleri atla
             if (_isMenuMode)
             {
                 UpdateCameraRotation();
@@ -190,8 +218,16 @@ namespace Sisifos.Camera
             }
 
             UpdateLookAhead();
-            UpdateSpeedZoom();
-            UpdateFOV();
+            
+            // Zone preset aktifken speed zoom ve FOV güncellemelerini atla
+            if (!_isInZonePreset)
+            {
+                UpdateSpeedZoom();
+            }
+            if (!_isInZonePreset)
+            {
+                UpdateFOV();
+            }
             UpdateSlopeResponse();
             ApplyCameraSettings();
             UpdateCameraRotation();
@@ -415,7 +451,14 @@ namespace Sisifos.Camera
         /// </summary>
         public void SetCameraPreset(CameraPreset preset, float transitionTime = 1f)
         {
-            StartCoroutine(TransitionToPreset(preset, transitionTime));
+            _isInZonePreset = true; // Dinamik güncellemeleri durdur
+            
+            // Önceki geçişi iptal et
+            if (_presetTransitionCoroutine != null)
+            {
+                StopCoroutine(_presetTransitionCoroutine);
+            }
+            _presetTransitionCoroutine = StartCoroutine(TransitionToPreset(preset, transitionTime));
         }
 
         /// <summary>
@@ -423,7 +466,14 @@ namespace Sisifos.Camera
         /// </summary>
         public void ResetToDefault(float transitionTime = 1f)
         {
-            StartCoroutine(TransitionToDefault(transitionTime));
+            _isInZonePreset = false; // Dinamik güncellemeleri tekrar aktif et
+            
+            // Önceki geçişi iptal et
+            if (_presetTransitionCoroutine != null)
+            {
+                StopCoroutine(_presetTransitionCoroutine);
+            }
+            _presetTransitionCoroutine = StartCoroutine(TransitionToDefault(transitionTime));
         }
         #endregion
 
@@ -431,9 +481,29 @@ namespace Sisifos.Camera
         private System.Collections.IEnumerator TransitionToPreset(CameraPreset preset, float duration)
         {
             float elapsed = 0f;
+            
+            // Mevcut değerleri başlangıç noktaları olarak sakla
             float startDistance = _currentDistance;
             float startHeight = cameraHeight;
             Vector3 startOffset = cameraOffset;
+            float startFOV = _currentFOV;
+            float startLookIntensity = lookIntensity;
+            Vector3 startRotationOffset = rotationOffset;
+            float startMaxVerticalAngle = maxVerticalAngle;
+            float startLookAheadDistance = lookAheadDistance;
+            float startVerticalLookAhead = verticalLookAhead;
+            float startFollowSmoothTime = followSmoothTime;
+            float startVerticalSmoothTime = verticalSmoothTime;
+
+            // Hedef değerleri belirle (-1 veya 0 ise mevcut değeri koru)
+            float targetFOV = preset.fieldOfView > 0f ? preset.fieldOfView : _currentFOV;
+            float targetLookIntensity = preset.lookIntensity >= 0f ? preset.lookIntensity : lookIntensity;
+            Vector3 targetRotationOffset = preset.rotationOffset;
+            float targetMaxVerticalAngle = preset.maxVerticalAngle >= 0f ? preset.maxVerticalAngle : maxVerticalAngle;
+            float targetLookAheadDistance = preset.lookAheadDistance >= 0f ? preset.lookAheadDistance : lookAheadDistance;
+            float targetVerticalLookAhead = preset.verticalLookAhead >= 0f ? preset.verticalLookAhead : verticalLookAhead;
+            float targetFollowSmoothTime = preset.followSmoothTime >= 0f ? preset.followSmoothTime : followSmoothTime;
+            float targetVerticalSmoothTime = preset.verticalSmoothTime >= 0f ? preset.verticalSmoothTime : verticalSmoothTime;
 
             while (elapsed < duration)
             {
@@ -441,22 +511,100 @@ namespace Sisifos.Camera
                 float t = elapsed / duration;
                 t = t * t * (3f - 2f * t); // Smoothstep
 
+                // Pozisyon parametreleri
                 _currentDistance = Mathf.Lerp(startDistance, preset.distance, t);
                 cameraHeight = Mathf.Lerp(startHeight, preset.height, t);
                 cameraOffset = Vector3.Lerp(startOffset, preset.offset, t);
+                _currentFOV = Mathf.Lerp(startFOV, targetFOV, t);
+                
+                // Look parametreleri
+                lookIntensity = Mathf.Lerp(startLookIntensity, targetLookIntensity, t);
+                rotationOffset = Vector3.Lerp(startRotationOffset, targetRotationOffset, t);
+                maxVerticalAngle = Mathf.Lerp(startMaxVerticalAngle, targetMaxVerticalAngle, t);
+                
+                // Follow parametreleri
+                lookAheadDistance = Mathf.Lerp(startLookAheadDistance, targetLookAheadDistance, t);
+                verticalLookAhead = Mathf.Lerp(startVerticalLookAhead, targetVerticalLookAhead, t);
+                followSmoothTime = Mathf.Lerp(startFollowSmoothTime, targetFollowSmoothTime, t);
+                verticalSmoothTime = Mathf.Lerp(startVerticalSmoothTime, targetVerticalSmoothTime, t);
+
+                // FOV'u uygula
+                if (virtualCamera != null)
+                {
+                    virtualCamera.Lens.FieldOfView = _currentFOV;
+                }
+
+                // Follow offset'i güncelle
+                if (_followComponent != null)
+                {
+                    _followComponent.FollowOffset = new Vector3(
+                        cameraOffset.x + _currentLookAhead.x,
+                        cameraOffset.y + cameraHeight + _currentHeightOffset + _currentLookAhead.y,
+                        -_currentDistance
+                    );
+                    
+                    // Damping değerlerini güncelle
+                    _followComponent.TrackerSettings.PositionDamping = new Vector3(
+                        followSmoothTime,
+                        verticalSmoothTime,
+                        followSmoothTime
+                    );
+                }
 
                 yield return null;
             }
+
+            // Geçiş bittiğinde değerleri kesin olarak hedef değerlere ata
+            _currentDistance = preset.distance;
+            cameraHeight = preset.height;
+            cameraOffset = preset.offset;
+            _currentFOV = targetFOV;
+            lookIntensity = targetLookIntensity;
+            rotationOffset = targetRotationOffset;
+            maxVerticalAngle = targetMaxVerticalAngle;
+            lookAheadDistance = targetLookAheadDistance;
+            verticalLookAhead = targetVerticalLookAhead;
+            followSmoothTime = targetFollowSmoothTime;
+            verticalSmoothTime = targetVerticalSmoothTime;
+
+            // Final değerleri uygula
+            if (virtualCamera != null)
+            {
+                virtualCamera.Lens.FieldOfView = _currentFOV;
+            }
+            if (_followComponent != null)
+            {
+                _followComponent.FollowOffset = new Vector3(
+                    cameraOffset.x + _currentLookAhead.x,
+                    cameraOffset.y + cameraHeight + _currentHeightOffset + _currentLookAhead.y,
+                    -_currentDistance
+                );
+                _followComponent.TrackerSettings.PositionDamping = new Vector3(
+                    followSmoothTime,
+                    verticalSmoothTime,
+                    followSmoothTime
+                );
+            }
+
+            _presetTransitionCoroutine = null;
         }
 
         private System.Collections.IEnumerator TransitionToDefault(float duration)
         {
-            // Varsayılan değerleri saklayın ve kullanın
+            // Saklanan varsayılan değerlere dön
             yield return TransitionToPreset(new CameraPreset
             {
-                distance = 15f,
-                height = 3f,
-                offset = new Vector3(0f, 2f, 0f)
+                distance = _defaultDistance,
+                height = _defaultHeight,
+                offset = _defaultOffset,
+                fieldOfView = _defaultFOV,
+                lookIntensity = _defaultLookIntensity,
+                rotationOffset = _defaultRotationOffset,
+                maxVerticalAngle = _defaultMaxVerticalAngle,
+                lookAheadDistance = _defaultLookAheadDistance,
+                verticalLookAhead = _defaultVerticalLookAhead,
+                followSmoothTime = _defaultFollowSmoothTime,
+                verticalSmoothTime = _defaultVerticalSmoothTime
             }, duration);
         }
 
@@ -561,9 +709,54 @@ namespace Sisifos.Camera
     [System.Serializable]
     public struct CameraPreset
     {
+        [Header("Position")]
         public float distance;
         public float height;
         public Vector3 offset;
+
+        [Header("Lens")]
         public float fieldOfView;
+
+        [Header("Look Settings")]
+        [Tooltip("Kameranın oyuncuya bakış yoğunluğu (0-1). -1 = değiştirme")]
+        [Range(-1f, 1f)]
+        public float lookIntensity;
+        
+        [Tooltip("Kamera rotasyon offset'i")]
+        public Vector3 rotationOffset;
+        
+        [Tooltip("Maksimum dikey bakış açısı. -1 = değiştirme")]
+        public float maxVerticalAngle;
+
+        [Header("Follow Settings")]
+        [Tooltip("İleri bakış mesafesi. -1 = değiştirme")]
+        public float lookAheadDistance;
+        
+        [Tooltip("Dikey ileri bakış. -1 = değiştirme")]
+        public float verticalLookAhead;
+        
+        [Tooltip("Takip yumuşaklığı. -1 = değiştirme")]
+        public float followSmoothTime;
+        
+        [Tooltip("Dikey takip yumuşaklığı. -1 = değiştirme")]
+        public float verticalSmoothTime;
+
+        /// <summary>
+        /// Varsayılan değerlerle preset oluşturur (-1 = değiştirme anlamında).
+        /// </summary>
+        public static CameraPreset Default => new CameraPreset
+        {
+            distance = 15f,
+            height = 3f,
+            offset = Vector3.zero,
+            fieldOfView = 45f,
+            lookIntensity = -1f,
+            rotationOffset = Vector3.zero,
+            maxVerticalAngle = -1f,
+            lookAheadDistance = -1f,
+            verticalLookAhead = -1f,
+            followSmoothTime = -1f,
+            verticalSmoothTime = -1f
+        };
     }
 }
