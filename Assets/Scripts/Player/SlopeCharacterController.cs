@@ -32,6 +32,8 @@ namespace Sisifos.Player
         [SerializeField] private float fallMultiplier = 2f;
         [SerializeField] private float groundCheckDistance = 0.3f;
         [SerializeField] private LayerMask groundLayer;
+        [Tooltip("Zıplamalar arası bekleme süresi (saniye)")]
+        [SerializeField] private float jumpCooldown = 1f;
 
         [Header("Slope Settings")]
         [SerializeField] private float maxSlopeAngle = 45f;
@@ -48,6 +50,7 @@ namespace Sisifos.Player
         [SerializeField] private string speedParameter = "Speed";
         [SerializeField] private string groundedParameter = "IsGrounded";
         [SerializeField] private string jumpParameter = "Jump";
+        [SerializeField] private string verticalVelocityParameter = "VerticalVelocity";
 
         // Components
         private CharacterController _characterController;
@@ -61,6 +64,7 @@ namespace Sisifos.Player
         private bool _isGrounded;
         private bool _isRunning;
         private bool _isJumping;
+        private float _jumpCooldownTimer = 0f;
         
         // Slope state
         private Vector3 _groundNormal = Vector3.up;
@@ -83,6 +87,9 @@ namespace Sisifos.Player
         private float _lifeStageSpeedMultiplier = 1f;
         private float _lifeStageJumpMultiplier = 1f;
         private float _lifeStageAccelerationMultiplier = 1f;
+
+        // Running restriction (zone'lar için)
+        private bool _runningDisabled = false;
 
         #region Properties
         public bool IsGrounded => _isGrounded;
@@ -142,13 +149,24 @@ namespace Sisifos.Player
         }
 
         /// <summary>
-        /// Taşınan kutu sayısını ayarlar ve hız çarpanını günceller
+        /// Koşmaya izin verilip verilmediğini ayarlar (zone'lar için).
+        /// false = koşma devre dışı, karakter sadece yürüyebilir
+        /// </summary>
+        public void SetRunningAllowed(bool allowed)
+        {
+            _runningDisabled = !allowed;
+        }
+
+        /// <summary>
+        /// Taşınan kutu sayısını ayarlar (artık hızı etkilemez - CharacterEvolution config kullanın)
         /// </summary>
         public void SetCarriedWeight(int boxCount)
         {
             _carriedBoxCount = boxCount;
-            // Hız çarpanı hesapla: her kutu için belirli yüzde azalma
-            _speedMultiplier = Mathf.Max(minSpeedMultiplier, 1f - (boxCount * speedReductionPerBox));
+            // NOT: Hız yavaşlatması kaldırıldı. 
+            // Hız modifierleri CharacterEvolution config'den ApplyLifeStageModifiers ile yapılır.
+            // _speedMultiplier her zaman 1f kalır
+            _speedMultiplier = 1f;
         }
 
         /// <summary>
@@ -238,9 +256,16 @@ namespace Sisifos.Player
                     _groundNormal = groundHit.normal;
                     _currentSlopeAngle = Vector3.Angle(Vector3.up, _groundNormal);
                 }
-                else if (Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, out RaycastHit slopeHit, groundRayLength))
+                else if (groundLayer.value != 0 && Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, out RaycastHit slopeHit, groundRayLength, groundLayer))
                 {
+                    // Sadece ground layer'daki objelerde eğim hesapla
                     _groundNormal = slopeHit.normal;
+                    _currentSlopeAngle = Vector3.Angle(Vector3.up, _groundNormal);
+                }
+                else if (groundLayer.value == 0 && Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, out RaycastHit defaultHit, groundRayLength))
+                {
+                    // Ground layer tanımlı değilse tüm objelere bak (fallback)
+                    _groundNormal = defaultHit.normal;
                     _currentSlopeAngle = Vector3.Angle(Vector3.up, _groundNormal);
                 }
                 else
@@ -315,7 +340,9 @@ namespace Sisifos.Player
             float horizontal = _inputMove.x;
             
             // Hedef hız hesapla (ağırlık çarpanı + gerginlik ile)
-            float baseSpeed = _isRunning ? runSpeed : walkSpeed;
+            // Koşma devre dışıysa (_runningDisabled) her zaman yürüme hızı kullan
+            bool canRun = _isRunning && !_runningDisabled;
+            float baseSpeed = canRun ? runSpeed : walkSpeed;
             
             // Gerginlik faktörü: 0 gerginlik = 1.0 çarpan, maksimum gerginlik = (1-maxTensionEffect) çarpan
             float tensionMultiplier = 1f - (_ropeTension * maxTensionEffect);
@@ -365,12 +392,20 @@ namespace Sisifos.Player
 
         private void HandleJump()
         {
+            // Cooldown sayacını güncelle
+            if (_jumpCooldownTimer > 0f)
+            {
+                _jumpCooldownTimer -= Time.deltaTime;
+            }
+
             if (_inputJump)
             {
-                if (_isGrounded)
+                // Cooldown bitmeden zıplayamaz
+                if (_isGrounded && _jumpCooldownTimer <= 0f)
                 {
                     _velocity.y = jumpForce * _lifeStageJumpMultiplier;
                     _isJumping = true;
+                    _jumpCooldownTimer = jumpCooldown; // Cooldown'u başlat
                     
                     if (animator != null)
                     {
@@ -421,6 +456,7 @@ namespace Sisifos.Player
         private int _speedHash = -1;
         private int _groundedHash = -1;
         private int _jumpHash = -1;
+        private int _verticalVelocityHash = -1;
         private bool _animatorInitialized = false;
 
         private void InitializeAnimatorHashes()
@@ -430,6 +466,7 @@ namespace Sisifos.Player
             _speedHash = Animator.StringToHash(speedParameter);
             _groundedHash = Animator.StringToHash(groundedParameter);
             _jumpHash = Animator.StringToHash(jumpParameter);
+            _verticalVelocityHash = Animator.StringToHash(verticalVelocityParameter);
             _animatorInitialized = true;
         }
 
@@ -456,6 +493,14 @@ namespace Sisifos.Player
             if (HasParameter(animator, _groundedHash))
             {
                 animator.SetBool(_groundedHash, _isGrounded);
+            }
+            
+            // Blend Tree için dikey hız parametresi
+            // -1 (düşüş) ile 1 (yükseliş) arası normalize edilmiş değer
+            if (HasParameter(animator, _verticalVelocityHash))
+            {
+                float normalizedVerticalVelocity = Mathf.Clamp(_velocity.y / jumpForce, -1f, 1f);
+                animator.SetFloat(_verticalVelocityHash, normalizedVerticalVelocity);
             }
         }
 

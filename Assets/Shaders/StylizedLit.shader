@@ -51,6 +51,7 @@ Shader "Custom/StylizedLit"
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _SHADOWS_SOFT
+            #pragma multi_compile_fog
             #pragma shader_feature_local _RIMLIGHT
             #pragma shader_feature_local _FOGBLEND
             
@@ -73,6 +74,7 @@ Shader "Custom/StylizedLit"
                 float3 normalWS : TEXCOORD2;
                 float3 viewDirWS : TEXCOORD3;
                 float4 shadowCoord : TEXCOORD4;
+                float fogCoord : TEXCOORD5;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
             
@@ -112,6 +114,7 @@ Shader "Custom/StylizedLit"
                 output.viewDirWS = GetWorldSpaceViewDir(posInputs.positionWS);
                 output.uv = TRANSFORM_TEX(input.uv, _BaseMap);
                 output.shadowCoord = GetShadowCoord(posInputs);
+                output.fogCoord = ComputeFogFactor(posInputs.positionCS.z);
                 
                 return output;
             }
@@ -171,7 +174,7 @@ Shader "Custom/StylizedLit"
                 // Combine lighting
                 float3 finalColor = diffuse + ambient + rim;
                 
-                // Distance fog blend
+                // Distance fog blend (custom fog - shader için)
                 #ifdef _FOGBLEND
                 {
                     float dist = distance(input.positionWS, _WorldSpaceCameraPos);
@@ -179,6 +182,9 @@ Shader "Custom/StylizedLit"
                     finalColor = lerp(finalColor, _FogColor.rgb, fogFactor);
                 }
                 #endif
+                
+                // Unity evrensel fog (Lighting > Environment > Fog)
+                finalColor = MixFog(finalColor, input.fogCoord);
                 
                 return half4(finalColor, albedo.a);
             }

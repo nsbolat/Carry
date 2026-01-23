@@ -54,6 +54,10 @@ namespace Sisifos.Interaction
         // Bağlı kutuların listesi (sıralı - ilk oyuncuya bağlı)
         private List<DraggableBox> _attachedBoxes = new List<DraggableBox>();
         
+        // Özel yük taşınıyor mu?
+        private bool _carryingSpecialCargo = false;
+        private SpecialCargo _currentSpecialCargo = null;
+        
         // En yakın etkileşilebilir kutu (highlight için)
         private DraggableBox _nearestBox;
         
@@ -65,9 +69,35 @@ namespace Sisifos.Interaction
 
         #region Properties
         public int AttachedBoxCount => _attachedBoxes.Count;
-        public bool CanAttachMore => maxBoxes <= 0 || _attachedBoxes.Count < maxBoxes;
+        
+        /// <summary>
+        /// Daha fazla kutu bağlanabilir mi?
+        /// Özel yük taşınıyorsa ve allowOtherCargoWhileCarrying false ise, bağlanamaz
+        /// </summary>
+        public bool CanAttachMore
+        {
+            get
+            {
+                // Özel yük taşınıyorsa ve izin yoksa bağlama
+                if (_carryingSpecialCargo && _currentSpecialCargo != null && !_currentSpecialCargo.allowOtherCargoWhileCarrying)
+                {
+                    return false;
+                }
+                return maxBoxes <= 0 || _attachedBoxes.Count < maxBoxes;
+            }
+        }
         public DraggableBox NearestInteractableBox => _nearestBox;
         public IReadOnlyList<DraggableBox> AttachedBoxes => _attachedBoxes.AsReadOnly();
+        
+        /// <summary>
+        /// Özel yük taşınıyor mu?
+        /// </summary>
+        public bool IsCarryingSpecialCargo => _carryingSpecialCargo;
+        
+        /// <summary>
+        /// Mevcut özel yük (varsa)
+        /// </summary>
+        public SpecialCargo CurrentSpecialCargo => _currentSpecialCargo;
         
         /// <summary>
         /// Halatın bağlandığı nokta - spine bone varsa onu kullan
@@ -162,6 +192,26 @@ namespace Sisifos.Interaction
         {
             if (box == null || box.IsAttached) return;
             if (!CanAttachMore) return;
+            
+            // Özel yük kontrolü
+            SpecialCargo specialCargo = box.GetComponent<SpecialCargo>();
+            if (specialCargo != null && specialCargo.detachOthersOnPickup)
+            {
+                // Özel yük alınıyor - önce diğer tüm yükleri bırak
+                int detachedCount = _attachedBoxes.Count;
+                if (detachedCount > 0)
+                {
+                    DetachAllBoxes();
+                    specialCargo.OnOthersDetached(detachedCount);
+                }
+                
+                // Özel yük flag'lerini ayarla
+                _carryingSpecialCargo = true;
+                _currentSpecialCargo = specialCargo;
+                
+                // Özel yük callback'i
+                specialCargo.OnPickedUp();
+            }
 
             // Kutu indeksi (0'dan başlar)
             int boxIndex = _attachedBoxes.Count;
@@ -190,7 +240,7 @@ namespace Sisifos.Interaction
             // Halat sesi çal
             PlayAttachSound();
             
-            Debug.Log($"Box attached! Total: {_attachedBoxes.Count}, Index: {boxIndex}, Funnel Offset: {funnelOffset}");
+            Debug.Log($"Box attached! Total: {_attachedBoxes.Count}, Index: {boxIndex}, Funnel Offset: {funnelOffset}, IsSpecial: {specialCargo != null}");
         }
         
         /// <summary>
@@ -284,6 +334,10 @@ namespace Sisifos.Interaction
                 }
             }
             _attachedBoxes.Clear();
+            
+            // Özel yük flag'lerini sıfırla
+            _carryingSpecialCargo = false;
+            _currentSpecialCargo = null;
             
             // Ağırlık güncelle
             UpdateCarriedWeight();

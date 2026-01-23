@@ -34,10 +34,15 @@ namespace Sisifos.Camera
         [Header("Debug")]
         [SerializeField] private bool livePreview = true;
 
+        [Header("Player Settings")]
+        [Tooltip("Bu zone içindeyken oyuncu koşamaz")]
+        [SerializeField] private bool disableRunning = false;
+
         // State
         private bool _hasTriggered = false;
         private bool _isPlayerInside = false;
         private DynamicCameraController _cameraController;
+        private Player.SlopeCharacterController _playerController;
         private int _originalPriority;
         private CameraPreset _lastPreset;
 
@@ -49,6 +54,13 @@ namespace Sisifos.Camera
 
             // Kamera kontrolcüsünü bul
             _cameraController = FindFirstObjectByType<DynamicCameraController>();
+
+            // Player controller'ı bul
+            var playerObj = GameObject.FindGameObjectWithTag("Player");
+            if (playerObj != null)
+            {
+                _playerController = playerObj.GetComponent<Player.SlopeCharacterController>();
+            }
 
             if (overrideCamera != null)
             {
@@ -113,6 +125,12 @@ namespace Sisifos.Camera
         {
             Debug.Log($"[CameraZone] Player entered: {zoneName}");
 
+            // Koşmayı engelle
+            if (disableRunning && _playerController != null)
+            {
+                _playerController.SetRunningAllowed(false);
+            }
+
             // Override kamera varsa aktif et
             if (overrideCamera != null)
             {
@@ -128,6 +146,12 @@ namespace Sisifos.Camera
         private void OnPlayerExitZone()
         {
             Debug.Log($"[CameraZone] Player exited: {zoneName}");
+
+            // Koşmayı tekrar aktif et
+            if (disableRunning && _playerController != null)
+            {
+                _playerController.SetRunningAllowed(true);
+            }
 
             // Override kamera varsa devre dışı bırak
             if (overrideCamera != null)

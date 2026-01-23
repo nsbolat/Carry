@@ -27,22 +27,22 @@ Material:
     m_Floats:
     - _BottomBlend: 0.5
     - _CloudBrightness: 2
-    - _CloudCoverage: 0.723
+    - _CloudCoverage: 0.792
     - _CloudDensity: 0.765
     - _CloudMinHeight: 0.043
-    - _CloudScale: 6
+    - _CloudScale: 8.3
     - _CloudSoftness: 0.5
     - _CloudSpeed: 0.2
     - _EnableClouds: 0.6
     - _HorizonHeight: -0.15
-    - _SunIntensity: 2.4
-    - _SunSize: 0.001
-    - _TopBlend: 0.39
+    - _SunIntensity: 1.66
+    - _SunSize: 0.036
+    - _TopBlend: 0.17
     m_Colors:
     - _BottomColor: {r: 0.29999998, g: 0.39999998, b: 0.5, a: 1}
     - _CloudColor: {r: 0.210021, g: 0.35047787, b: 0.511, a: 1}
     - _HorizonColor: {r: 0.170172, g: 0.25908598, b: 0.348, a: 1}
-    - _SunColor: {r: 0.915, g: 0.9688333, b: 1, a: 1}
+    - _SunColor: {r: 0.809, g: 0.937925, b: 1, a: 1}
     - _TopColor: {r: 0.29916865, g: 0.40346172, b: 0.5019608, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

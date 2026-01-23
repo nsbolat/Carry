@@ -93,6 +93,14 @@ namespace Sisifos.Player
 
         private void Start()
         {
+            // Developer mode'da beşik bekleme, direkt başlat
+            if (Core.GameStateManager.Instance != null && Core.GameStateManager.Instance.IsDeveloperMode)
+            {
+                Debug.Log("[CharacterEvolution] Developer Mode - Beşik beklenmeden karakter başlatıldı");
+                InitializeFirstStage();
+                return;
+            }
+            
             if (waitForCradleFall)
             {
                 // Beşik düşene kadar tüm modelleri gizle
@@ -216,6 +224,12 @@ namespace Sisifos.Player
             DeactivateCurrentStage();
             _currentStageIndex = targetStageIndex;
             ActivateStage(targetStage);
+            
+            // Müzik değişimi - MusicManager varsa crossfade ile geçiş yap
+            if (Audio.MusicManager.Instance != null)
+            {
+                Audio.MusicManager.Instance.PlayMusicForLifeStage(targetStageIndex);
+            }
 
             _isTransitioning = false;
 

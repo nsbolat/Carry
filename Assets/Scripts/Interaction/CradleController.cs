@@ -105,8 +105,16 @@ namespace Sisifos.Interaction
                 _rigidbody.isKinematic = true;
             }
             
-            // Karakteri başlangıçta gizle
-            SetCharacterVisible(false);
+            // Developer mode'da karakteri göster, normal modda gizle
+            if (Core.GameStateManager.Instance != null && Core.GameStateManager.Instance.IsDeveloperMode)
+            {
+                SetCharacterVisible(true);
+                Debug.Log("[CradleController] Developer Mode - Karakter görünür başlatıldı");
+            }
+            else
+            {
+                SetCharacterVisible(false);
+            }
         }
 
         private void Update()
